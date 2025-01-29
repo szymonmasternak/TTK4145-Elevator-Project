@@ -1,0 +1,38 @@
+name: Go Build And Test 
+
+on:
+  push:
+    branches:
+      - '*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code from Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Initialise and update submodules
+        run: git submodule update --init --recursive
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.4'
+      
+      - name: Intiailising Workspace
+        run: make workspace
+
+      - name: Build Project
+        run: make build
+      
+      - name: Test Project
+        run: make test
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: elevator
+          path: build/elevator
