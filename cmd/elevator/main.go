@@ -1,13 +1,14 @@
 package main
 
 import (
-	"Network-go/network/bcast"
-	"Network-go/network/localip"
-	"Network-go/network/peers"
 	"flag"
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/bcast"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/localip"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/peers"
 )
 
 // We define some custom struct to send over the network.

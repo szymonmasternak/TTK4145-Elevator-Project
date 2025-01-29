@@ -2,6 +2,6 @@ module github.com/szymonmasternak/TTK4145-Elevator-Project
 
 go 1.23.4
 
-replace Network-go => ./Network-go
+require github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go v0.0.0 // Arbitrary version
 
-require Network-go v0.0.0-00010101000000-000000000000
+replace github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go => ./libs/Network-go
