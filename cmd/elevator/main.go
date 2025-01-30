@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevutils"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/bcast"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/localip"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/peers"
@@ -25,9 +26,9 @@ func main() {
 	// Our id can be anything. Here we pass it on the command line, using
 	//  `go run main.go -id=our_id`
 	gitHash := elevutils.GetGitHash()
-	fmt.Println("Git Hash:", gitHash)
 
-	fmt.Println()
+	Log := logger.GetLogger()
+	Log.Info().Msgf("Git Hash: %s", gitHash)
 
 	var id string
 	flag.StringVar(&id, "id", "", "id of this peer")
@@ -73,17 +74,17 @@ func main() {
 		}
 	}()
 
-	fmt.Println("Started")
+	Log.Info().Msg("Started")
 	for {
 		select {
 		case p := <-peerUpdateCh:
-			fmt.Printf("Peer update:\n")
-			fmt.Printf("  Peers:    %q\n", p.Peers)
-			fmt.Printf("  New:      %q\n", p.New)
-			fmt.Printf("  Lost:     %q\n", p.Lost)
+			Log.Info().Msgf("Peer update:")
+			Log.Info().Msgf("  Peers:    %q", p.Peers)
+			Log.Info().Msgf("  New:      %q", p.New)
+			Log.Info().Msgf("  Lost:     %q", p.Lost)
 
 		case a := <-helloRx:
-			fmt.Printf("Received: %#v\n", a)
+			Log.Info().Msgf("Received: %#v", a)
 		}
 	}
 }
