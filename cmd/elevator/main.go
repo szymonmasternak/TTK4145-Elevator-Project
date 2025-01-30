@@ -1,13 +1,15 @@
 package main
 
 import (
-	"Network-go/network/bcast"
-	"Network-go/network/localip"
-	"Network-go/network/peers"
 	"flag"
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevutils"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/bcast"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/localip"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/peers"
 )
 
 // We define some custom struct to send over the network.
@@ -22,6 +24,11 @@ type HelloMsg struct {
 func main() {
 	// Our id can be anything. Here we pass it on the command line, using
 	//  `go run main.go -id=our_id`
+	gitHash := elevutils.GetGitHash()
+	fmt.Println("Git Hash:", gitHash)
+
+	fmt.Println()
+
 	var id string
 	flag.StringVar(&id, "id", "", "id of this peer")
 	flag.Parse()
