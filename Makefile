@@ -2,7 +2,8 @@ BINARY_NAME = elevator
 BUILD_DIR = build
 MAIN_DIR = cmd/$(BINARY_NAME)/main.go
 
-.PHONY: build run
+.PHONY: build run test all
+default: build run
 
 all: build test run
 
