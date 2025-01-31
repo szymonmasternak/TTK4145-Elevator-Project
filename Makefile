@@ -2,9 +2,9 @@ BINARY_NAME = elevator
 BUILD_DIR = build
 MAIN_DIR = cmd/$(BINARY_NAME)/main.go
 
-.PHONY: all build run clean
+.PHONY: build run
 
-all: build run
+all: build test run
 
 build:
 	@echo "[BUILD] Building project"
@@ -20,8 +20,3 @@ run:
 test:
 	@echo "[TEST] Running Tests"
 	@go test ./...
-
-workspace:
-	@echo "[INIT] Intialising Workspace"
-	go work init .
-	go work use . ./libs/Network-go

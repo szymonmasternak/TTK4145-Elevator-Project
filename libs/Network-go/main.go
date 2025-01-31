@@ -1,22 +1,18 @@
 package main
 
 import (
+	"Network-go/network/bcast"
+	"Network-go/network/localip"
+	"Network-go/network/peers"
 	"flag"
 	"fmt"
 	"os"
 	"time"
-
-	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevutils"
-	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
-	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/bcast"
-	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/localip"
-	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/peers"
 )
 
 // We define some custom struct to send over the network.
 // Note that all members we want to transmit must be public. Any private members
-//
-//	will be received as zero-values.
+//  will be received as zero-values.
 type HelloMsg struct {
 	Message string
 	Iter    int
@@ -25,11 +21,6 @@ type HelloMsg struct {
 func main() {
 	// Our id can be anything. Here we pass it on the command line, using
 	//  `go run main.go -id=our_id`
-	gitHash := elevutils.GetGitHash()
-
-	Log := logger.GetLogger()
-	Log.Info().Msgf("Git Hash: %s", gitHash)
-
 	var id string
 	flag.StringVar(&id, "id", "", "id of this peer")
 	flag.Parse()
@@ -74,17 +65,17 @@ func main() {
 		}
 	}()
 
-	Log.Info().Msg("Started")
+	fmt.Println("Started")
 	for {
 		select {
 		case p := <-peerUpdateCh:
-			Log.Info().Msgf("Peer update:")
-			Log.Info().Msgf("  Peers:    %q", p.Peers)
-			Log.Info().Msgf("  New:      %q", p.New)
-			Log.Info().Msgf("  Lost:     %q", p.Lost)
+			fmt.Printf("Peer update:\n")
+			fmt.Printf("  Peers:    %q\n", p.Peers)
+			fmt.Printf("  New:      %q\n", p.New)
+			fmt.Printf("  Lost:     %q\n", p.Lost)
 
 		case a := <-helloRx:
-			Log.Info().Msgf("Received: %#v", a)
+			fmt.Printf("Received: %#v\n", a)
 		}
 	}
 }
