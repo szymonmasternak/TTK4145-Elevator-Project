@@ -1,4 +1,4 @@
-package nodebroadcast
+package node
 
 import (
 	"encoding/json"
@@ -6,47 +6,31 @@ import (
 	"fmt"
 	"net"
 	"time"
-
-	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 )
 
 type NodeBroadcast struct {
-	SoftwareVersion string `json:"software_version"`
-	IpAddress       string `json:"ip_address"`
-	PortNumber      int    `json:"port_number"`
-	NodeNumber      int    `json:"node_number"`
-	DeviceType      string `json:"device_type"`
+	Node //inherits struct from node package
 
-	broadcasting bool         //internal variable
-	startStopCh  chan int     //internal variable
-	conn         *net.UDPConn //internal variable
+	broadcasting       bool          //internal variable
+	startStopCh        chan int      //internal variable
+	conn               *net.UDPConn  //internal variable
+	broadCastingPeriod time.Duration //internal variable
 }
 
-const (
-	BROADCAST_PERIOD = 100 * time.Millisecond
-)
-
-var Log = logger.GetLogger()
-
-func NewNodeBroadcast(softwareversion string, ipaddress string, portnumber int, nodenumber int, devicetype string) *NodeBroadcast {
+func NewNodeBroadcast(node Node, broadcastingPeriod time.Duration) *NodeBroadcast {
 	return &NodeBroadcast{
-		SoftwareVersion: softwareversion,
-		IpAddress:       ipaddress,
-		PortNumber:      portnumber,
-		NodeNumber:      nodenumber,
-		DeviceType:      devicetype,
-
-		broadcasting: false,
-		startStopCh:  make(chan int),
+		Node:               node,
+		broadcasting:       false,
+		startStopCh:        make(chan int),
+		broadCastingPeriod: broadcastingPeriod,
 	}
 }
-
 func (nb *NodeBroadcast) StartBroadcasting() error {
 	if nb.broadcasting {
 		return errors.New("nodeBroadcast is already broadcasting")
 	}
 
-	udpAddress, err := net.ResolveUDPAddr("udp", "255.255.255.255:9999")
+	udpAddress, err := net.ResolveUDPAddr("udp", nb.getIPAddressPort())
 	if err != nil {
 		return fmt.Errorf("error resolving UDP Address: %v", err)
 	}
@@ -55,10 +39,10 @@ func (nb *NodeBroadcast) StartBroadcasting() error {
 	if err != nil {
 		return fmt.Errorf("error creating UDP Socket: %v", err)
 	}
-	nb.conn.SetWriteBuffer(1024)
+	nb.conn.SetWriteBuffer(BUFFER_LENGTH)
 
 	go func() {
-		timeTicker := time.NewTicker(BROADCAST_PERIOD)
+		timeTicker := time.NewTicker(nb.broadCastingPeriod)
 		defer timeTicker.Stop()
 		defer nb.conn.Close()
 		nb.broadcasting = true
@@ -75,11 +59,11 @@ func (nb *NodeBroadcast) StartBroadcasting() error {
 					Log.Error().Msgf("Error writing to UDP Socket: %v", err)
 				}
 
-				Log.Debug().Msgf("Sendt Packet: %v", string(jsonData))
+				Log.Debug().Msgf("Sent Packet: %v", string(jsonData))
 
 			case val := <-nb.startStopCh:
 				if val == 0 {
-					Log.Info().Msgf("Stopping periodic task...")
+					Log.Info().Msgf("Stopping Broadcasting task...")
 					return
 				}
 			}
