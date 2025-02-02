@@ -51,11 +51,6 @@ func (nb *NodeBroadcast) StartBroadcasting() error {
 		return fmt.Errorf("error resolving UDP Address: %v", err)
 	}
 
-	conn, err := net.DialUDP("udp", nil, udpAddress)
-	if err != nil {
-		return fmt.Errorf("error dialing UDP: %v", err)
-	}
-
 	nb.conn, err = net.DialUDP("udp", nil, udpAddress)
 	if err != nil {
 		return fmt.Errorf("error creating UDP Socket: %v", err)
@@ -75,7 +70,7 @@ func (nb *NodeBroadcast) StartBroadcasting() error {
 				if err != nil {
 					Log.Error().Msgf("Error marshalling JSON: %v", err)
 				}
-				_, err = conn.Write(jsonData)
+				_, err = nb.conn.Write(jsonData)
 				if err != nil {
 					Log.Error().Msgf("Error writing to UDP Socket: %v", err)
 				}
