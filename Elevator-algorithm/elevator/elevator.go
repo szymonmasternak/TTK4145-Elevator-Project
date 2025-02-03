@@ -39,7 +39,7 @@ func elevator_print(es Elevator) {
 			"  |dirn  = %-12s|\n"+
 			"  |behav = %-12s|\n",
 		es.Floor,
-		elevio_dirn_toString(es.Dirn),
+		Elevio_dirn_toString(es.Dirn),
 		eb_toString(es.Behaviour),
 	)
 	fmt.Println("  +--------------------+")
@@ -73,7 +73,7 @@ func elevator_uninitialized() Elevator {
 			clearRequestVariant ClearRequestVariant
 			doorOpenDuration_s  float64
 		}{
-			clearRequestVariant: CV_All,
+			clearRequestVariant: CV_InDirn,
 			doorOpenDuration_s:  3.0,
 		},
 	}

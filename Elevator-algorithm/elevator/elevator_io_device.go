@@ -22,21 +22,21 @@ func wrap_motorDirection(dirn Dirn) {
 // Returns an instance of the input device
 func Elevio_getInputDevice() ElevInputDevice {
 	return ElevInputDevice{
-		floor_sensor:   elevio.GetFloor,
-		request_button: wrap_requestButton,
-		stop_button:    func() int { return boolToInt(elevio.GetStop()) },
-		obstruction:    func() int { return boolToInt(elevio.GetObstruction()) },
+		FloorSensor:   elevio.GetFloor,
+		RequestButton: wrap_requestButton,
+		StopButton:    func() int { return boolToInt(elevio.GetStop()) },
+		Obstruction:   func() int { return boolToInt(elevio.GetObstruction()) },
 	}
 }
 
 // Returns an instance of the output device
 func Elevio_getOutputDevice() ElevOutputDevice {
 	return ElevOutputDevice{
-		floor_indicator:      elevio.SetFloorIndicator,
-		request_button_light: wrap_requestButtonLight,
-		door_light:           func(value int) { elevio.SetDoorOpenLamp(value != 0) },
-		stop_button_light:    func(value int) { elevio.SetStopLamp(value != 0) },
-		motor_direction:      wrap_motorDirection,
+		FloorIndicator:     elevio.SetFloorIndicator,
+		RequestButtonLight: wrap_requestButtonLight,
+		DoorLight:          func(value int) { elevio.SetDoorOpenLamp(value != 0) },
+		StopButtonLight:    func(value int) { elevio.SetStopLamp(value != 0) },
+		MotorDirection:     wrap_motorDirection,
 	}
 }
 

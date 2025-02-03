@@ -26,21 +26,22 @@ const (
 
 // ElevInputDevice struct replacing function pointers with function fields
 type ElevInputDevice struct {
-	floor_sensor   func() int
-	request_button func(floor int, button Button) int
-	stop_button    func() int
-	obstruction    func() int
+	FloorSensor   func() int
+	RequestButton func(floor int, button Button) int
+	StopButton    func() int
+	Obstruction   func() int
 }
 
 // ElevOutputDevice struct replacing function pointers with function fields
 type ElevOutputDevice struct {
-	floor_indicator      func(floor int)
-	request_button_light func(floor int, button Button, value int)
-	door_light           func(value int)
-	stop_button_light    func(value int)
-	motor_direction      func(direction Dirn)
+	FloorIndicator     func(floor int)
+	RequestButtonLight func(floor int, button Button, value int)
+	DoorLight          func(value int)
+	StopButtonLight    func(value int)
+	MotorDirection     func(direction Dirn)
 }
 
+/* REDUNDANT
 // Function to convert Dirn to string
 func elevio_dirn_toString(d Dirn) string {
 	switch d {
@@ -68,3 +69,4 @@ func elevio_button_toString(b Button) string {
 		return "Unknown"
 	}
 }
+*/
