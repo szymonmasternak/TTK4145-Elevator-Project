@@ -12,26 +12,6 @@ var outputDevice ElevOutputDevice
 func init() {
 	elevator = elevator_uninitialized()
 
-	/* REPLACE CONFIGFILE WITH VARIABLES
-	// Load config from file (assuming a config package handles this)
-	config, err := LoadConfig("elevator.con")
-	if err != nil {
-		fmt.Println("Failed to load config:", err)
-	}
-
-	// Load door open duration
-	if value, ok := config.GetFloat("doorOpenDuration_s"); ok {
-		elevator.Config.doorOpenDuration_s = value
-	}
-
-	// Load clear request variant
-	if value, ok := config.GetEnum("clearRequestVariant", map[string]int{
-		"CV_All":    int(CV_All),
-		"CV_InDirn": int(CV_InDirn),
-	}); ok {
-		elevator.Config.clearRequestVariant = ClearRequestVariant(value)
-	} */
-
 	elevator.Config.doorOpenDuration_s = 3.0
 	elevator.Config.clearRequestVariant = CV_InDirn
 

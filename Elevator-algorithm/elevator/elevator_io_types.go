@@ -40,33 +40,3 @@ type ElevOutputDevice struct {
 	StopButtonLight    func(value int)
 	MotorDirection     func(direction Dirn)
 }
-
-/* REDUNDANT
-// Function to convert Dirn to string
-func elevio_dirn_toString(d Dirn) string {
-	switch d {
-	case D_Down:
-		return "Down"
-	case D_Stop:
-		return "Stop"
-	case D_Up:
-		return "Up"
-	default:
-		return "Unknown"
-	}
-}
-
-// Function to convert Button to string
-func elevio_button_toString(b Button) string {
-	switch b {
-	case B_HallUp:
-		return "Hall Up"
-	case B_HallDown:
-		return "Hall Down"
-	case B_Cab:
-		return "Cab"
-	default:
-		return "Unknown"
-	}
-}
-*/
