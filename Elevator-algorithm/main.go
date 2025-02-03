@@ -43,9 +43,13 @@ func main() {
 
 		case <-ticker.C: // This properly checks the timer periodically
 			if elevator.Timer_timedOut() {
-				elevator.Timer_stop()
-				fmt.Println("Timer timed out!")
-				elevator.Fsm_onDoorTimeout()
+				if !elevio.GetObstruction() {
+					fmt.Println(elevio.GetObstruction())
+					elevator.Timer_stop()
+					fmt.Println("Timer timed out!")
+					elevator.Fsm_onDoorTimeout()
+				}
+
 			}
 		}
 	}
