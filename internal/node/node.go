@@ -31,6 +31,6 @@ func (node *Node) String() string {
 	return string(jsonData)
 }
 
-func (node *Node) getIPAddressPort() string {
+func (node *Node) GetIPAddressPort() string {
 	return fmt.Sprintf("%s:%d", node.IpAddress, node.PortNumber)
 }

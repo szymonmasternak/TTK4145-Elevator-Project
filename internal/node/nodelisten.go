@@ -28,7 +28,7 @@ func NewNodeListen(node Node) *NodeListen {
 }
 
 func (nl *NodeListen) StartListening() error {
-	udpAddress, err := net.ResolveUDPAddr("udp", nl.getIPAddressPort())
+	udpAddress, err := net.ResolveUDPAddr("udp", nl.GetIPAddressPort())
 	if err != nil {
 		return fmt.Errorf("error resolving UDP Address: %v", err)
 	}

@@ -30,7 +30,7 @@ func (nb *NodeBroadcast) StartBroadcasting() error {
 		return errors.New("nodeBroadcast is already broadcasting")
 	}
 
-	udpAddress, err := net.ResolveUDPAddr("udp", nb.getIPAddressPort())
+	udpAddress, err := net.ResolveUDPAddr("udp", nb.GetIPAddressPort())
 	if err != nil {
 		return fmt.Errorf("error resolving UDP Address: %v", err)
 	}
