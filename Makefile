@@ -1,6 +1,10 @@
-BINARY_NAME = elevator
+ELEVATOR_BINARY_NAME = elevator
+ELEVATOR_MAIN_DIR = cmd/$(ELEVATOR_BINARY_NAME)/main.go
+
+ELEVATORTESTER_BINARY_NAME = elevatortester
+ELEVATORTESTER_MAIN_DIR = cmd/$(ELEVATORTESTER_BINARY_NAME)/main.go
+
 BUILD_DIR = build
-MAIN_DIR = cmd/$(BINARY_NAME)/main.go
 
 .PHONY: build run test all
 default: build run
@@ -8,15 +12,18 @@ default: build run
 all: build test run
 
 build:
-	@echo "[BUILD] Building project"
+	@echo "[BUILD] Building projects"
 	@mkdir -p $(BUILD_DIR)
 	go mod tidy
 	go generate ./...
-	go build -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_DIR)
+	@echo "[BUILD] Building $(ELEVATOR_BINARY_NAME)"
+	go build -o $(BUILD_DIR)/$(ELEVATOR_BINARY_NAME) $(ELEVATOR_MAIN_DIR)
+	@echo "[BUILD] Building $(ELEVATORTESTER_BINARY_NAME)"
+	go build -o $(BUILD_DIR)/$(ELEVATORTESTER_BINARY_NAME) $(ELEVATORTESTER_MAIN_DIR)
 
 run:
-	@echo "[RUN] Running $(BUILD_DIR)/$(BINARY_NAME)"
-	@$(BUILD_DIR)/$(BINARY_NAME)
+	@echo "[RUN] Running $(ELEVATOR_MAIN_DIR)/$(BINARY_NAME)"
+	@$(ELEVATOR_MAIN_DIR)/$(BINARY_NAME)
 
 test:
 	@echo "[TEST] Running Tests"

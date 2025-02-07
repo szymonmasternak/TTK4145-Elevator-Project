@@ -14,7 +14,6 @@ const (
 	EB_Moving
 )
 
-
 type ClearRequestVariant int
 
 const (
@@ -22,12 +21,11 @@ const (
 	CV_InDirn
 )
 
-
 type Elevator struct {
-	Floor     int
-	Dirn      Dirn
-	Requests  [N_FLOORS][N_BUTTONS]int
-	Behaviour ElevatorBehaviour
+	Floor               int
+	Dirn                Dirn
+	Requests            [N_FLOORS][N_BUTTONS]int
+	Behaviour           ElevatorBehaviour
 	clearRequestVariant ClearRequestVariant
 	doorOpenDuration_s  time.Duration
 }
@@ -65,11 +63,11 @@ func (es Elevator) Print() {
 }
 
 // Method to create an uninitialized elevator
-func (e *Elevator) init(doorOpenDuration time.Duration, requestVariant ClearRequestVariant ) Elevator {
+func (e *Elevator) Init(doorOpenDuration time.Duration, requestVariant ClearRequestVariant) Elevator {
 	return Elevator{
-		Floor:     -1,
-		Dirn:      D_Stop,
-		Behaviour: EB_Idle,
+		Floor:               -1,
+		Dirn:                D_Stop,
+		Behaviour:           EB_Idle,
 		clearRequestVariant: requestVariant,
 		doorOpenDuration_s:  doorOpenDuration,
 	}

@@ -8,9 +8,8 @@ import (
 var elevator Elevator
 var outputDevice ElevOutputDevice
 
-
 func init() {
-	elevator = elevator.init(3.0, CV_InDirn)
+	elevator = elevator.Init(3.0, CV_InDirn)
 
 	// Initialize output device
 	outputDevice = Elevio_getOutputDevice()
