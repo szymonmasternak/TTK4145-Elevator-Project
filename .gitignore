@@ -26,3 +26,6 @@ go.work.sum
 
 # build directory
 /build/
+
+# DS_Store file
+.DS_Store
