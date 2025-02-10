@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevalgorithm"
-
-	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/elevio"
 )
 
 func main() {
@@ -16,20 +14,20 @@ func main() {
 	inputPollRate := 25 * time.Millisecond
 
 	// Initialize elevalgorithm
-	elevio.Init("localhost:15657", 4)
+	elevalgorithm.Init("localhost:15657", 4)
 	elevalgorithm.Fsm_onInitBetweenFloors()
 
 	// Channels for inputs
-	drv_buttons := make(chan elevio.ButtonEvent)
+	drv_buttons := make(chan elevalgorithm.ButtonEvent)
 	drv_floors := make(chan int)
 	drv_stop := make(chan bool)
 	drv_obstr := make(chan bool)
 
 	// Start polling input devices
-	go elevio.PollButtons(drv_buttons)
-	go elevio.PollFloorSensor(drv_floors)
-	go elevio.PollStopButton(drv_stop)
-	go elevio.PollObstructionSwitch(drv_obstr)
+	go elevalgorithm.PollButtons(drv_buttons)
+	go elevalgorithm.PollFloorSensor(drv_floors)
+	go elevalgorithm.PollStopButton(drv_stop)
+	go elevalgorithm.PollObstructionSwitch(drv_obstr)
 
 	// Elevator loop
 	ticker := time.NewTicker(inputPollRate)
@@ -43,10 +41,10 @@ func main() {
 		case floorArrival := <-drv_floors:
 			elevalgorithm.Fsm_onFloorArrival(floorArrival)
 
-		case <-ticker.C: // This properly checks the timer periodically
+		case <-ticker.C: // This checks the timer periodically
 			if elevalgorithm.Timer_timedOut() {
-				if !elevio.GetObstruction() {
-					fmt.Println(elevio.GetObstruction())
+				if !elevalgorithm.GetObstruction() {
+					fmt.Println(elevalgorithm.GetObstruction())
 					elevalgorithm.Timer_stop()
 					fmt.Println("Timer timed out!")
 					elevalgorithm.Fsm_onDoorTimeout()

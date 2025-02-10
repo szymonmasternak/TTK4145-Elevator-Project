@@ -69,7 +69,7 @@ func (e *Elevator) Init(doorOpenDuration time.Duration, requestVariant ClearRequ
 		Dirn:                D_Stop,
 		Behaviour:           EB_Idle,
 		clearRequestVariant: requestVariant,
-		doorOpenDuration_s:  doorOpenDuration,
+		doorOpenDuration_s:  doorOpenDuration*time.Second,
 	}
 }
 

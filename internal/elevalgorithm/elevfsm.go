@@ -75,7 +75,7 @@ func Fsm_onRequestButtonPress(btn_floor int, btn_type Button) {
 
 // Handles elevator arrival at a new floor
 func Fsm_onFloorArrival(newFloor int) {
-	logger.Log.Info().Msgf("\n\nFsm_onFloorArrival(%d)\n", newFloor)
+	logger.Log.Info().Msgf("\nFsm_onFloorArrival(%d)\n", newFloor)
 	elevator.Print()
 
 	elevator.Floor = newFloor
@@ -99,7 +99,7 @@ func Fsm_onFloorArrival(newFloor int) {
 
 // Handles door timeout event
 func Fsm_onDoorTimeout() {
-	logger.Log.Info().Msgf("\n\nFsm_onDoorTimeout() - Closing Door")
+	logger.Log.Info().Msgf("\nFsm_onDoorTimeout() - Closing Door")
 	elevator.Print()
 
 	if elevator.Behaviour == EB_DoorOpen {
@@ -114,6 +114,7 @@ func Fsm_onDoorTimeout() {
 		switch elevator.Behaviour {
 		case EB_DoorOpen:
 			// Restart timer if the elevator still has a request at this floor
+			outputDevice.DoorLight(1)
 			Timer_start(elevator.doorOpenDuration_s)
 			elevator = Requests_clearAtCurrentFloor(elevator)
 			setAllLights(elevator)
