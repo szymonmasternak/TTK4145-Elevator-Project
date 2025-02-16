@@ -30,8 +30,8 @@ func main() {
 
 	for {
 		select {
-		case n := <-elev.Network.Listen.ElevatorsFoundOnNetwork:
-			Logger.Info().Msgf("Elevator found on network: %v", n.String())
+		case elevatorFound := <-elev.Network.Listen.ElevatorsFoundOnNetwork:
+			Logger.Info().Msgf("Elevator found on network: %v", elevatorFound.String())
 		}
 	}
 }
