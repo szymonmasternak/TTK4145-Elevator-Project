@@ -10,6 +10,9 @@ require (
 	golang.org/x/sys v0.12.0 // indirect
 )
 
-require github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go v0.0.0
+require (
+	github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go v0.0.0
+	github.com/xyproto/randomstring v1.2.0
+)
 
 replace github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go => ./libs/Network-go
