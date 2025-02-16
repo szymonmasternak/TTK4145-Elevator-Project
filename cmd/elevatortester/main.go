@@ -1,21 +1,22 @@
 package main
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevalgorithm"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 )
 
 func main() {
-	fmt.Println("Started!")
+	var Log = logger.GetLogger() //valid across all files in node folder
+	Log.Info().Msg("Started!")
 
 	// Input poll rate
 	inputPollRate := 25 * time.Millisecond
 
 	// Initialize elevalgorithm
-	elevalgorithm.Init("localhost:15657", 4)
-	elevalgorithm.Fsm_onInitBetweenFloors()
+	elevalgorithm.DriverInit("localhost:15657", 4)
+	elevalgorithm.FSMinit()
 
 	// Channels for inputs
 	drv_buttons := make(chan elevalgorithm.ButtonEvent)
@@ -44,9 +45,7 @@ func main() {
 		case <-ticker.C: // This checks the timer periodically
 			if elevalgorithm.Timer_timedOut() {
 				if !elevalgorithm.GetObstruction() {
-					fmt.Println(elevalgorithm.GetObstruction())
 					elevalgorithm.Timer_stop()
-					fmt.Println("Timer timed out!")
 					elevalgorithm.Fsm_onDoorTimeout()
 				}
 

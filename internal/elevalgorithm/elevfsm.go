@@ -7,12 +7,17 @@ import (
 // Elevator state variables
 var elevator Elevator
 var outputDevice ElevOutputDevice
+var Log = logger.GetLogger() //valid across all files in node folder
 
-func init() {
-	elevator = elevator.Init(3.0, CV_InDirn)
+func FSMinit() {
+	elevator = elevator.Init(3.0, CV_InDirn) //Create uninitialized elevator
+	elevator.Floor = GetFloor()              // Initialize elevator floor
+	if elevator.Floor == -1 {
+		Fsm_onInitBetweenFloors()
+	}
 
 	// Initialize output device
-	outputDevice = Elevio_getOutputDevice()
+	outputDevice = GetOutputDevice()
 }
 
 // Set all button lights based on the elevator state
@@ -26,6 +31,7 @@ func setAllLights(es Elevator) {
 
 // Handles elevator initialization between floors
 func Fsm_onInitBetweenFloors() {
+	Log.Info().Msgf("Elevator initialized between floors, moving down to nearest floor")
 	outputDevice.MotorDirection(D_Down)
 	elevator.Dirn = D_Down
 	elevator.Behaviour = EB_Moving
@@ -33,7 +39,7 @@ func Fsm_onInitBetweenFloors() {
 
 // Handles button press events
 func Fsm_onRequestButtonPress(btn_floor int, btn_type Button) {
-	logger.Log.Info().Msgf("\nFsm_onRequestButtonPress(%d, %s)\n", btn_floor, btn_type.ToString())
+	Log.Info().Msgf("\nFsm_onRequestButtonPress(%d, %s)\n", btn_floor, btn_type.ToString())
 	elevator.Print()
 
 	switch elevator.Behaviour {
@@ -69,7 +75,7 @@ func Fsm_onRequestButtonPress(btn_floor int, btn_type Button) {
 
 	setAllLights(elevator)
 
-	logger.Log.Info().Msgf("\nNew state:")
+	Log.Info().Msgf("\nNew state:")
 	elevator.Print()
 }
 

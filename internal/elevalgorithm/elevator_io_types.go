@@ -5,7 +5,6 @@ const (
 	N_BUTTONS = 3
 )
 
-
 type Dirn int
 
 const (
@@ -14,7 +13,6 @@ const (
 	D_Up   Dirn = 1
 )
 
-
 type Button int
 
 const (
@@ -22,14 +20,6 @@ const (
 	B_HallDown
 	B_Cab
 )
-
-// ElevInputDevice struct replacing function pointers with function fields
-type ElevInputDevice struct {
-	FloorSensor   func() int
-	RequestButton func(floor int, button Button) int
-	StopButton    func() int
-	Obstruction   func() int
-}
 
 // ElevOutputDevice struct replacing function pointers with function fields
 type ElevOutputDevice struct {

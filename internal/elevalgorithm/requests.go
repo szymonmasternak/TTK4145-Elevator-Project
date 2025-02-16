@@ -6,7 +6,6 @@ type DirnBehaviourPair struct {
 	Behaviour ElevatorBehaviour
 }
 
-
 // Checks if there are requests above the current floor
 func requests_above(e Elevator) bool {
 	for f := e.Floor + 1; f < N_FLOORS; f++ {

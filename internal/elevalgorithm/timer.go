@@ -9,8 +9,6 @@ import (
 var timerActive bool
 var timerEndTime time.Time
 
-
-
 // Start the timer with a given duration in seconds
 func Timer_start(duration time.Duration) {
 	timerEndTime = time.Now().Add(duration)
