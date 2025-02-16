@@ -2,6 +2,7 @@ package elevator
 
 import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevnet"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevutils"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 	"github.com/xyproto/randomstring"
@@ -10,9 +11,8 @@ import (
 var Logger = logger.GetLogger()
 
 type Elevator struct {
-	ElevMetaData *elevmetadata.ElevMetaData //this contains all elevator constant metadata
-
-	//ElevIO state
+	MetaData *elevmetadata.ElevMetaData //this contains all elevator constant metadata
+	Network  *elevnet.ElevatorNetwork
 
 	initialised bool
 }
@@ -23,13 +23,16 @@ func NewElevator(identifier string) *Elevator {
 		Logger.Warn().Msgf("No identifier provided, generated random identifier \"%v\"", identifier)
 	}
 
+	elevatorMetadata := &elevmetadata.ElevMetaData{
+		SoftwareVersion: elevutils.GetGitHash(),
+		IpAddress:       elevutils.GetLocalIP(),
+		PortNumber:      9999,
+		Identifier:      identifier,
+	}
+
 	return &Elevator{
-		ElevMetaData: &elevmetadata.ElevMetaData{
-			SoftwareVersion: elevutils.GetGitHash(),
-			IpAddress:       elevutils.GetLocalIP(),
-			PortNumber:      9999,
-			Identifier:      identifier,
-		},
+		MetaData:    elevatorMetadata,
+		Network:     elevnet.NewElevatorNetwork(elevatorMetadata),
 		initialised: true,
 	}
 }

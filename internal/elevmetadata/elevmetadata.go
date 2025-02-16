@@ -2,6 +2,7 @@ package elevmetadata
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 )
@@ -23,4 +24,8 @@ func (elevMetaData *ElevMetaData) String() string {
 		return ""
 	}
 	return string(jsonData)
+}
+
+func (elevMetaData *ElevMetaData) GetIPAddressPort() string {
+	return fmt.Sprintf("%s:%d", elevMetaData.IpAddress, elevMetaData.PortNumber)
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevutils"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 
@@ -20,7 +22,16 @@ func main() {
 	identifier := elevutils.ProcessCmdArgs()
 
 	elev := elevator.NewElevator(identifier)
-	elev.Start()
+
+	Logger.Info().Msgf("Elevator: %v", elev.MetaData.String())
+
+	elev.Network.Broadcast.Start(time.Millisecond * 1000)
+	elev.Network.Listen.Start()
+
 	for {
+		select {
+		case n := <-elev.Network.Listen.ElevatorsFoundOnNetwork:
+			Logger.Info().Msgf("Elevator found on network: %v", n.String())
+		}
 	}
 }
