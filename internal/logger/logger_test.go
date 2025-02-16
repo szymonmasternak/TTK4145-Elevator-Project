@@ -7,7 +7,7 @@ import (
 
 var waitGroup sync.WaitGroup
 
-func loopgetLogger(t *testing.T, routineNum int) {
+func loopGetLogger(t *testing.T, routineNum int) {
 	defer waitGroup.Done()
 	for i := 0; i < 1000; i++ {
 		logger1 := GetLogger()
@@ -23,7 +23,7 @@ func TestGetLogger(t *testing.T) {
 	}
 
 	waitGroup.Add(2)
-	go loopgetLogger(t, 1)
-	go loopgetLogger(t, 2)
+	go loopGetLogger(t, 1)
+	go loopGetLogger(t, 2)
 	waitGroup.Wait()
 }
