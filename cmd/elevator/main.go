@@ -88,7 +88,7 @@ func main() {
 // Function to spawn a new backup process with a unique port
 func spawnBackup(port int) {
 	// Ensure the program runs the source file directly
-	sourcePath, err := filepath.Abs("counting.go")
+	sourcePath, err := filepath.Abs("main.go")
 	if err != nil {
 		fmt.Println("Failed to get absolute path of source file:", err)
 		return
