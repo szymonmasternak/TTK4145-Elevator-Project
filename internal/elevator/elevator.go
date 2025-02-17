@@ -1,10 +1,14 @@
 package elevator
 
 import (
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevio"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevnet"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevutils"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
+
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
+
 	"github.com/xyproto/randomstring"
 )
 
@@ -13,6 +17,8 @@ var Logger = logger.GetLogger()
 type Elevator struct {
 	MetaData *elevmetadata.ElevMetaData //this contains all elevator constant metadata
 	Network  *elevnet.ElevatorNetwork
+	IO       *elevio.ElevatorIO
+	State    *elevstate.ElevatorState
 
 	initialised bool
 }
@@ -30,9 +36,14 @@ func NewElevator(identifier string) *Elevator {
 		Identifier:      identifier,
 	}
 
+	elevIO := elevio.NewElevatorIO("localhost:15657", 4)
+	elevState := elevstate.NewElevatorState(elevIO)
+
 	return &Elevator{
 		MetaData:    elevatorMetadata,
 		Network:     elevnet.NewElevatorNetwork(elevatorMetadata),
+		IO:          elevIO,
+		State:       elevState,
 		initialised: true,
 	}
 }

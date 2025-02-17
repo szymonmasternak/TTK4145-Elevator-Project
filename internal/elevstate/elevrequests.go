@@ -1,4 +1,4 @@
-package elevalgorithm
+package elevstate
 
 // Struct equivalent to DirnBehaviourPair
 type DirnBehaviourPair struct {
