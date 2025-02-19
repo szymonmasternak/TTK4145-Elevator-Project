@@ -19,16 +19,17 @@ type ElevatorIO struct {
 	driver *ElevIODriver
 }
 
-func NewElevatorIO(ipAddress string, numFloors int) *ElevatorIO {
+func NewElevatorIO(ipAddress string, numFloors int) (*ElevatorIO, error) {
 	driver, err := NewElevIODriver(ipAddress, numFloors)
 
 	if err != nil {
 		Log.Error().Msgf("Error when creating elevator object %v", err)
+		return nil, err
 	}
 
 	return &ElevatorIO{
 		driver: driver,
-	}
+	}, nil
 }
 
 func (e *ElevatorIO) FloorIndicator(floor int) {

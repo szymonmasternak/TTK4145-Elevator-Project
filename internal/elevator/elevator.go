@@ -36,7 +36,11 @@ func NewElevator(identifier string) *Elevator {
 		Identifier:      identifier,
 	}
 
-	elevIO := elevio.NewElevatorIO("localhost:15657", 4)
+	elevIO, err := elevio.NewElevatorIO("localhost:15657", 4)
+	if err != nil {
+		panic("Error Creating ElevIO Object")
+	}
+
 	elevState := elevstate.NewElevatorState(elevIO)
 
 	return &Elevator{
