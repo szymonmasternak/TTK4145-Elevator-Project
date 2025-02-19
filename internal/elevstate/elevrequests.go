@@ -6,11 +6,10 @@ type DirnBehaviourPair struct {
 	Behaviour ElevatorBehaviour
 }
 
-// Checks if there are requests above the current floor
-func requests_above(e Elevator) bool {
-	for f := e.Floor + 1; f < N_FLOORS; f++ {
+func (es *ElevatorState) requestsAbove() bool {
+	for f := es.Floor + 1; f < N_FLOORS; f++ {
 		for btn := 0; btn < N_BUTTONS; btn++ {
-			if e.Requests[f][btn] != 0 {
+			if es.Requests[f][btn] != 0 {
 				return true
 			}
 		}
@@ -18,11 +17,10 @@ func requests_above(e Elevator) bool {
 	return false
 }
 
-// Checks if there are requests below the current floor
-func requests_below(e Elevator) bool {
-	for f := 0; f < e.Floor; f++ {
+func (es *ElevatorState) requestsBelow() bool {
+	for f := 0; f < es.Floor; f++ {
 		for btn := 0; btn < N_BUTTONS; btn++ {
-			if e.Requests[f][btn] != 0 {
+			if es.Requests[f][btn] != 0 {
 				return true
 			}
 		}
@@ -30,10 +28,9 @@ func requests_below(e Elevator) bool {
 	return false
 }
 
-// Checks if there are requests at the current floor
-func requests_here(e Elevator) bool {
+func (es *ElevatorState) requestsHere() bool {
 	for btn := 0; btn < N_BUTTONS; btn++ {
-		if e.Requests[e.Floor][btn] != 0 {
+		if es.Requests[es.Floor][btn] != 0 {
 			return true
 		}
 	}
@@ -41,92 +38,88 @@ func requests_here(e Elevator) bool {
 }
 
 // Determines the direction and behavior of the elevator
-func Requests_chooseDirection(e Elevator) DirnBehaviourPair {
-	switch e.Dirn {
+func (es *ElevatorState) RequestsChooseDirection() DirnBehaviourPair {
+	switch es.Dirn {
 	case D_Up:
-		if requests_above(e) {
+		if es.requestsAbove() {
 			return DirnBehaviourPair{D_Up, EB_Moving}
-		} else if requests_here(e) {
+		} else if es.requestsHere() {
 			return DirnBehaviourPair{D_Down, EB_DoorOpen}
-		} else if requests_below(e) {
+		} else if es.requestsBelow() {
 			return DirnBehaviourPair{D_Down, EB_Moving}
 		}
 	case D_Down:
-		if requests_below(e) {
+		if es.requestsBelow() {
 			return DirnBehaviourPair{D_Down, EB_Moving}
-		} else if requests_here(e) {
+		} else if es.requestsHere() {
 			return DirnBehaviourPair{D_Up, EB_DoorOpen}
-		} else if requests_above(e) {
+		} else if es.requestsAbove() {
 			return DirnBehaviourPair{D_Up, EB_Moving}
 		}
 	case D_Stop:
-		if requests_here(e) {
+		if es.requestsHere() {
 			return DirnBehaviourPair{D_Stop, EB_DoorOpen}
-		} else if requests_above(e) {
+		} else if es.requestsAbove() {
 			return DirnBehaviourPair{D_Up, EB_Moving}
-		} else if requests_below(e) {
+		} else if es.requestsBelow() {
 			return DirnBehaviourPair{D_Down, EB_Moving}
 		}
 	}
 	return DirnBehaviourPair{D_Stop, EB_Idle}
 }
 
-// Determines if the elevator should stop at the current floor
-func Requests_shouldStop(e Elevator) bool {
-	switch e.Dirn {
+func (es *ElevatorState) RequestsShouldStop() bool {
+	switch es.Dirn {
 	case D_Down:
-		return e.Requests[e.Floor][B_HallDown] != 0 ||
-			e.Requests[e.Floor][B_Cab] != 0 ||
-			!requests_below(e)
+		return es.Requests[es.Floor][B_HallDown] != 0 ||
+			es.Requests[es.Floor][B_Cab] != 0 ||
+			!es.requestsBelow()
 	case D_Up:
-		return e.Requests[e.Floor][B_HallUp] != 0 ||
-			e.Requests[e.Floor][B_Cab] != 0 ||
-			!requests_above(e)
+		return es.Requests[es.Floor][B_HallUp] != 0 ||
+			es.Requests[es.Floor][B_Cab] != 0 ||
+			!es.requestsAbove()
 	case D_Stop:
 		return true
 	}
 	return true
 }
 
-// Determines if a request should be cleared immediately
-func Requests_shouldClearImmediately(e Elevator, btnFloor int, btnType Button) bool {
-	switch e.clearRequestVariant {
+func (es *ElevatorState) RequestsShouldClearImmediately(btnFloor int, btnType Button) bool {
+	switch es.clearRequestVariant {
 	case CV_All:
-		return e.Floor == btnFloor
+		return es.Floor == btnFloor
 	case CV_InDirn:
-		return e.Floor == btnFloor &&
-			((e.Dirn == D_Up && btnType == B_HallUp) ||
-				(e.Dirn == D_Down && btnType == B_HallDown) ||
-				e.Dirn == D_Stop ||
+		return es.Floor == btnFloor &&
+			((es.Dirn == D_Up && btnType == B_HallUp) ||
+				(es.Dirn == D_Down && btnType == B_HallDown) ||
+				es.Dirn == D_Stop ||
 				btnType == B_Cab)
 	}
 	return false
 }
 
-// Clears requests at the current floor
-func Requests_clearAtCurrentFloor(e Elevator) Elevator {
-	switch e.clearRequestVariant {
+func (es *ElevatorState) RequestsClearAtCurrentFloor() {
+	switch es.clearRequestVariant {
 	case CV_All:
 		for btn := 0; btn < N_BUTTONS; btn++ {
-			e.Requests[e.Floor][btn] = 0
+			es.Requests[es.Floor][btn] = 0
 		}
 	case CV_InDirn:
-		e.Requests[e.Floor][B_Cab] = 0
-		switch e.Dirn {
+		es.Requests[es.Floor][B_Cab] = 0
+		switch es.Dirn {
 		case D_Up:
-			if !requests_above(e) && e.Requests[e.Floor][B_HallUp] == 0 {
-				e.Requests[e.Floor][B_HallDown] = 0
+			if !es.requestsAbove() && es.Requests[es.Floor][B_HallUp] == 0 {
+				es.Requests[es.Floor][B_HallDown] = 0
 			}
-			e.Requests[e.Floor][B_HallUp] = 0
+			es.Requests[es.Floor][B_HallUp] = 0
 		case D_Down:
-			if !requests_below(e) && e.Requests[e.Floor][B_HallDown] == 0 {
-				e.Requests[e.Floor][B_HallUp] = 0
+			if !es.requestsBelow() && es.Requests[es.Floor][B_HallDown] == 0 {
+				es.Requests[es.Floor][B_HallUp] = 0
 			}
-			e.Requests[e.Floor][B_HallDown] = 0
+			es.Requests[es.Floor][B_HallDown] = 0
 		case D_Stop:
-			e.Requests[e.Floor][B_HallUp] = 0
-			e.Requests[e.Floor][B_HallDown] = 0
+			es.Requests[es.Floor][B_HallUp] = 0
+			es.Requests[es.Floor][B_HallDown] = 0
 		}
 	}
-	return e
 }
