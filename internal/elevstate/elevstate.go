@@ -3,6 +3,7 @@ package elevstate
 import (
 	"time"
 
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevio"
@@ -12,12 +13,12 @@ var Log = logger.GetLogger()
 
 type ElevatorState struct {
 	Floor     int
-	Dirn      Dirn
-	Requests  [N_FLOORS][N_BUTTONS]int
-	Behaviour ElevatorBehaviour
+	Dirn      elevconsts.Dirn
+	Requests  [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int
+	Behaviour elevconsts.ElevatorBehaviour
 
 	//Internal Variables
-	clearRequestVariant ClearRequestVariant
+	clearRequestVariant elevconsts.ClearRequestVariant
 	doorOpenDuration_s  time.Duration
 
 	io *elevio.ElevatorIO //internal pointer
@@ -28,9 +29,9 @@ type ElevatorState struct {
 func NewElevatorState(ioDriver *elevio.ElevatorIO) *ElevatorState {
 	elevatorState := &ElevatorState{
 		Floor:               -1,
-		Dirn:                D_Stop,
-		Behaviour:           EB_Idle,
-		clearRequestVariant: CV_InDirn, //TODO: Verify and maybe change?
+		Dirn:                elevconsts.Stop,
+		Behaviour:           elevconsts.Idle,
+		clearRequestVariant: elevconsts.InDirn, //TODO: Verify and maybe change?
 		doorOpenDuration_s:  time.Second * 3,
 		io:                  ioDriver,
 	}
@@ -38,9 +39,9 @@ func NewElevatorState(ioDriver *elevio.ElevatorIO) *ElevatorState {
 
 	if elevatorState.Floor == -1 {
 		Log.Info().Msgf("Elevator initialized between floors, moving down to nearest floor")
-		elevatorState.io.MotorDirection(D_Down)
-		elevatorState.Dirn = D_Down
-		elevatorState.Behaviour = EB_Moving
+		elevatorState.io.MotorDirection(elevconsts.Down)
+		elevatorState.Dirn = elevconsts.Down
+		elevatorState.Behaviour = elevconsts.Moving
 	}
 
 	return elevatorState
@@ -52,16 +53,16 @@ func (es *ElevatorState) Print() {
 		"  |dirn  = %-12s|\n"+
 		"  |behav = %-12s|\n",
 		es.Floor,
-		es.Dirn.ToString(),
-		ElevatorBehaviour.toString(es.Behaviour),
+		es.Dirn.String(),
+		es.Behaviour.String(),
 	)
 	Log.Info().Msgf("  +--------------------+")
 	Log.Info().Msgf("  |  | up  | dn  | cab |")
 
-	for f := N_FLOORS - 1; f >= 0; f-- {
+	for f := elevconsts.N_FLOORS - 1; f >= 0; f-- {
 		Log.Info().Msgf("  | %d", f)
-		for btn := 0; btn < N_BUTTONS; btn++ {
-			if (f == N_FLOORS-1 && btn == int(B_HallUp)) || (f == 0 && btn == int(B_HallDown)) {
+		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
+			if (f == elevconsts.N_FLOORS-1 && btn == int(elevconsts.HallUp)) || (f == 0 && btn == int(elevconsts.HallDown)) {
 				Log.Info().Msgf("|     ")
 			} else {
 				if es.Requests[f][btn] != 0 {
@@ -77,43 +78,43 @@ func (es *ElevatorState) Print() {
 }
 
 func (es *ElevatorState) setAllLights() {
-	for floor := 0; floor < N_FLOORS; floor++ {
-		for btn := 0; btn < N_BUTTONS; btn++ {
-			es.io.RequestButtonLight(floor, Button(btn), es.Requests[floor][btn])
+	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
+		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
+			es.io.RequestButtonLight(floor, elevconsts.Button(btn), es.Requests[floor][btn])
 		}
 	}
 }
 
-func (es *ElevatorState) FsmOnRequestButtonPress(btn_floor int, btn_type Button) {
-	Log.Info().Msgf("Fsm_onRequestButtonPress(%d, %s)\n", btn_floor, btn_type.ToString())
+func (es *ElevatorState) FsmOnRequestButtonPress(btn_floor int, btn_type elevconsts.Button) {
+	Log.Info().Msgf("Fsm_onRequestButtonPress(%d, %s)\n", btn_floor, btn_type.String())
 
 	switch es.Behaviour {
-	case EB_DoorOpen:
+	case elevconsts.DoorOpen:
 		if es.RequestsShouldClearImmediately(btn_floor, btn_type) {
 			es.endTime = time.Now().Add(es.doorOpenDuration_s)
 		} else {
 			es.Requests[btn_floor][btn_type] = 1
 		}
 
-	case EB_Moving:
+	case elevconsts.Moving:
 		es.Requests[btn_floor][btn_type] = 1
 
-	case EB_Idle:
+	case elevconsts.Idle:
 		es.Requests[btn_floor][btn_type] = 1
 		pair := es.RequestsChooseDirection()
 		es.Dirn = pair.Dirn
 		es.Behaviour = pair.Behaviour
 
 		switch pair.Behaviour {
-		case EB_DoorOpen:
+		case elevconsts.DoorOpen:
 			es.io.DoorLight(1)
 			es.endTime = time.Now().Add(es.doorOpenDuration_s)
 			es.RequestsClearAtCurrentFloor()
 
-		case EB_Moving:
+		case elevconsts.Moving:
 			es.io.MotorDirection(es.Dirn)
 
-		case EB_Idle:
+		case elevconsts.Idle:
 			// Do nothing
 		}
 	}
@@ -131,16 +132,16 @@ func (es *ElevatorState) FsmOnFloorArrival(newFloor int) {
 	es.io.FloorIndicator(es.Floor)
 
 	switch es.Behaviour {
-	case EB_Moving:
+	case elevconsts.Moving:
 		if es.RequestsShouldStop() {
-			es.io.MotorDirection(D_Stop)
+			es.io.MotorDirection(elevconsts.Stop)
 			es.io.DoorLight(1)
 			//elevator = es.RequestsClearAtCurrentFloor(elevator)
 			es.RequestsClearAtCurrentFloor()
 			// Timer_start(elevator.doorOpenDuration_s)
 			es.endTime = time.Now().Add(es.doorOpenDuration_s)
 			es.setAllLights()
-			es.Behaviour = EB_DoorOpen
+			es.Behaviour = elevconsts.DoorOpen
 		}
 	}
 }
@@ -149,7 +150,7 @@ func (es *ElevatorState) FsmOnFloorArrival(newFloor int) {
 func (es *ElevatorState) FsmOnDoorTimeout() {
 	Log.Info().Msg("Closing Door")
 
-	if es.Behaviour == EB_DoorOpen {
+	if es.Behaviour == elevconsts.DoorOpen {
 		// Turn off door light (Close door)
 		es.io.DoorLight(0)
 
@@ -159,7 +160,7 @@ func (es *ElevatorState) FsmOnDoorTimeout() {
 		es.Behaviour = pair.Behaviour
 
 		switch es.Behaviour {
-		case EB_DoorOpen:
+		case elevconsts.DoorOpen:
 			// Restart timer if the elevator still has a request at this floor
 			es.io.DoorLight(1)
 			es.endTime = time.Now().Add(es.doorOpenDuration_s)
@@ -167,11 +168,11 @@ func (es *ElevatorState) FsmOnDoorTimeout() {
 			es.RequestsClearAtCurrentFloor()
 			es.setAllLights()
 
-		case EB_Moving:
+		case elevconsts.Moving:
 			// Move the elevator in the chosen direction
 			es.io.MotorDirection(es.Dirn)
 
-		case EB_Idle:
+		case elevconsts.Idle:
 			// Do nothing, elevator stays idle
 		}
 	}

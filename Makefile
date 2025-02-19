@@ -22,8 +22,8 @@ build:
 	go build -o $(BUILD_DIR)/$(ELEVATORTESTER_BINARY_NAME) $(ELEVATORTESTER_MAIN_DIR)
 
 run:
-	@echo "[RUN] Running $(ELEVATOR_MAIN_DIR)/$(BINARY_NAME)"
-	@$(ELEVATOR_MAIN_DIR)/$(BINARY_NAME)
+	@echo "[RUN] Running $(ELEVATOR_MAIN_DIR)/$(ELEVATOR_BINARY_NAME)"
+	@$(BUILD_DIR)/$(ELEVATOR_BINARY_NAME)
 
 test:
 	@echo "[TEST] Running Tests"

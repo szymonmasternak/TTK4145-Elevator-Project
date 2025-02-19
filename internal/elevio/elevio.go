@@ -1,7 +1,7 @@
 package elevio
 
 import (
-	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 )
 
@@ -9,10 +9,10 @@ var Log = logger.GetLogger()
 
 type ElevIO interface {
 	FloorIndicator(floor int)
-	RequestButtonLight(floor int, button elevstate.Button, value int)
+	RequestButtonLight(floor int, button elevconsts.Button, value int)
 	DoorLight(value int)
 	StopButtonLight(value int)
-	MotorDirection(direction elevstate.Dirn)
+	MotorDirection(direction elevconsts.Dirn)
 }
 
 type ElevatorIO struct {
@@ -35,7 +35,7 @@ func (e *ElevatorIO) FloorIndicator(floor int) {
 	e.driver.SetFloorIndicator(floor)
 }
 
-func (e *ElevatorIO) RequestButtonLight(floor int, button elevstate.Button, value int) {
+func (e *ElevatorIO) RequestButtonLight(floor int, button elevconsts.Button, value int) {
 	e.driver.SetButtonLamp(ButtonType(button), floor, value != 0)
 }
 
@@ -47,7 +47,7 @@ func (e *ElevatorIO) StopButtonLight(value int) {
 	e.driver.SetStopLamp(value != 0)
 }
 
-func (e *ElevatorIO) MotorDirection(direction elevstate.Dirn) {
+func (e *ElevatorIO) MotorDirection(direction elevconsts.Dirn) {
 	e.driver.SetMotorDirection(MotorDirection(direction))
 }
 

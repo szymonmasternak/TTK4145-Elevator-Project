@@ -1,14 +1,16 @@
 package elevstate
 
+import "github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
+
 // Struct equivalent to DirnBehaviourPair
 type DirnBehaviourPair struct {
-	Dirn      Dirn
-	Behaviour ElevatorBehaviour
+	Dirn      elevconsts.Dirn
+	Behaviour elevconsts.ElevatorBehaviour
 }
 
 func (es *ElevatorState) requestsAbove() bool {
-	for f := es.Floor + 1; f < N_FLOORS; f++ {
-		for btn := 0; btn < N_BUTTONS; btn++ {
+	for f := es.Floor + 1; f < elevconsts.N_FLOORS; f++ {
+		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
 			if es.Requests[f][btn] != 0 {
 				return true
 			}
@@ -19,7 +21,7 @@ func (es *ElevatorState) requestsAbove() bool {
 
 func (es *ElevatorState) requestsBelow() bool {
 	for f := 0; f < es.Floor; f++ {
-		for btn := 0; btn < N_BUTTONS; btn++ {
+		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
 			if es.Requests[f][btn] != 0 {
 				return true
 			}
@@ -29,7 +31,7 @@ func (es *ElevatorState) requestsBelow() bool {
 }
 
 func (es *ElevatorState) requestsHere() bool {
-	for btn := 0; btn < N_BUTTONS; btn++ {
+	for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
 		if es.Requests[es.Floor][btn] != 0 {
 			return true
 		}
@@ -40,86 +42,86 @@ func (es *ElevatorState) requestsHere() bool {
 // Determines the direction and behavior of the elevator
 func (es *ElevatorState) RequestsChooseDirection() DirnBehaviourPair {
 	switch es.Dirn {
-	case D_Up:
+	case elevconsts.Up:
 		if es.requestsAbove() {
-			return DirnBehaviourPair{D_Up, EB_Moving}
+			return DirnBehaviourPair{elevconsts.Up, elevconsts.Moving}
 		} else if es.requestsHere() {
-			return DirnBehaviourPair{D_Down, EB_DoorOpen}
+			return DirnBehaviourPair{elevconsts.Down, elevconsts.DoorOpen}
 		} else if es.requestsBelow() {
-			return DirnBehaviourPair{D_Down, EB_Moving}
+			return DirnBehaviourPair{elevconsts.Down, elevconsts.Moving}
 		}
-	case D_Down:
+	case elevconsts.Down:
 		if es.requestsBelow() {
-			return DirnBehaviourPair{D_Down, EB_Moving}
+			return DirnBehaviourPair{elevconsts.Down, elevconsts.Moving}
 		} else if es.requestsHere() {
-			return DirnBehaviourPair{D_Up, EB_DoorOpen}
+			return DirnBehaviourPair{elevconsts.Up, elevconsts.DoorOpen}
 		} else if es.requestsAbove() {
-			return DirnBehaviourPair{D_Up, EB_Moving}
+			return DirnBehaviourPair{elevconsts.Up, elevconsts.Moving}
 		}
-	case D_Stop:
+	case elevconsts.Stop:
 		if es.requestsHere() {
-			return DirnBehaviourPair{D_Stop, EB_DoorOpen}
+			return DirnBehaviourPair{elevconsts.Stop, elevconsts.DoorOpen}
 		} else if es.requestsAbove() {
-			return DirnBehaviourPair{D_Up, EB_Moving}
+			return DirnBehaviourPair{elevconsts.Up, elevconsts.Moving}
 		} else if es.requestsBelow() {
-			return DirnBehaviourPair{D_Down, EB_Moving}
+			return DirnBehaviourPair{elevconsts.Down, elevconsts.Moving}
 		}
 	}
-	return DirnBehaviourPair{D_Stop, EB_Idle}
+	return DirnBehaviourPair{elevconsts.Stop, elevconsts.Idle}
 }
 
 func (es *ElevatorState) RequestsShouldStop() bool {
 	switch es.Dirn {
-	case D_Down:
-		return es.Requests[es.Floor][B_HallDown] != 0 ||
-			es.Requests[es.Floor][B_Cab] != 0 ||
+	case elevconsts.Down:
+		return es.Requests[es.Floor][elevconsts.HallDown] != 0 ||
+			es.Requests[es.Floor][elevconsts.Cab] != 0 ||
 			!es.requestsBelow()
-	case D_Up:
-		return es.Requests[es.Floor][B_HallUp] != 0 ||
-			es.Requests[es.Floor][B_Cab] != 0 ||
+	case elevconsts.Up:
+		return es.Requests[es.Floor][elevconsts.HallUp] != 0 ||
+			es.Requests[es.Floor][elevconsts.Cab] != 0 ||
 			!es.requestsAbove()
-	case D_Stop:
+	case elevconsts.Stop:
 		return true
 	}
 	return true
 }
 
-func (es *ElevatorState) RequestsShouldClearImmediately(btnFloor int, btnType Button) bool {
+func (es *ElevatorState) RequestsShouldClearImmediately(btnFloor int, btnType elevconsts.Button) bool {
 	switch es.clearRequestVariant {
-	case CV_All:
+	case elevconsts.All:
 		return es.Floor == btnFloor
-	case CV_InDirn:
+	case elevconsts.InDirn:
 		return es.Floor == btnFloor &&
-			((es.Dirn == D_Up && btnType == B_HallUp) ||
-				(es.Dirn == D_Down && btnType == B_HallDown) ||
-				es.Dirn == D_Stop ||
-				btnType == B_Cab)
+			((es.Dirn == elevconsts.Up && btnType == elevconsts.HallUp) ||
+				(es.Dirn == elevconsts.Down && btnType == elevconsts.HallDown) ||
+				es.Dirn == elevconsts.Stop ||
+				btnType == elevconsts.Cab)
 	}
 	return false
 }
 
 func (es *ElevatorState) RequestsClearAtCurrentFloor() {
 	switch es.clearRequestVariant {
-	case CV_All:
-		for btn := 0; btn < N_BUTTONS; btn++ {
+	case elevconsts.All:
+		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
 			es.Requests[es.Floor][btn] = 0
 		}
-	case CV_InDirn:
-		es.Requests[es.Floor][B_Cab] = 0
+	case elevconsts.InDirn:
+		es.Requests[es.Floor][elevconsts.Cab] = 0
 		switch es.Dirn {
-		case D_Up:
-			if !es.requestsAbove() && es.Requests[es.Floor][B_HallUp] == 0 {
-				es.Requests[es.Floor][B_HallDown] = 0
+		case elevconsts.Up:
+			if !es.requestsAbove() && es.Requests[es.Floor][elevconsts.HallUp] == 0 {
+				es.Requests[es.Floor][elevconsts.HallDown] = 0
 			}
-			es.Requests[es.Floor][B_HallUp] = 0
-		case D_Down:
-			if !es.requestsBelow() && es.Requests[es.Floor][B_HallDown] == 0 {
-				es.Requests[es.Floor][B_HallUp] = 0
+			es.Requests[es.Floor][elevconsts.HallUp] = 0
+		case elevconsts.Down:
+			if !es.requestsBelow() && es.Requests[es.Floor][elevconsts.HallDown] == 0 {
+				es.Requests[es.Floor][elevconsts.HallUp] = 0
 			}
-			es.Requests[es.Floor][B_HallDown] = 0
-		case D_Stop:
-			es.Requests[es.Floor][B_HallUp] = 0
-			es.Requests[es.Floor][B_HallDown] = 0
+			es.Requests[es.Floor][elevconsts.HallDown] = 0
+		case elevconsts.Stop:
+			es.Requests[es.Floor][elevconsts.HallUp] = 0
+			es.Requests[es.Floor][elevconsts.HallDown] = 0
 		}
 	}
 }
