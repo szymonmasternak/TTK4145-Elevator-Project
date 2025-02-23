@@ -71,44 +71,6 @@ func TestStartBroadcastingListening(t *testing.T) {
 	}
 }
 
-// func TestElevatorList(t *testing.T) {
-// 	broadcastingPeriod := 100 * time.Millisecond
-// 	listeningTimeout := broadcastingPeriod * 30
-
-// 	newNode1 := Node{"sdijfoisj", "0.0.0.0", 9999, 1, "elevator1"}
-
-// 	newNodeB1 := NewNodeBroadcast(newNode1, broadcastingPeriod)
-// 	newNodeB1.StartBroadcasting()
-
-// 	newNode2 := Node{"sodicmxzxj", "0.0.0.0", 9999, 2, "elevator2"}
-
-// 	newNodeB2 := NewNodeBroadcast(newNode2, 5*broadcastingPeriod)
-// 	newNodeB2.StartBroadcasting()
-
-// 	newNode3 := Node{"klsdlksdldkfjsdi", "0.0.0.0", 9999, 3, "elevator3"}
-
-// 	newNodeB3 := NewNodeBroadcast(newNode3, 10*broadcastingPeriod)
-// 	newNodeB3.StartBroadcasting()
-
-// 	newNodeL := NewNodeListen(newNode1)
-// 	newNodeL.StartListening()
-
-// 	timerticker := time.NewTimer(listeningTimeout)
-// 	defer timerticker.Stop()
-
-// 	select {
-// 	case nodeFound := <-nl.NodesFoundOnNetwork:
-// 		if nodeFound != node1 {
-// 			t.Errorf("Node found on network = %s, expected %s", nodeFound.String(), node1.String())
-// 		}
-// 		timerticker.Stop()
-// 		return
-// 	case <-timerticker.C:
-// 		t.Errorf("Timed out waiting for node to be found on network")
-// 		return
-// 	}
-// }
-
 func nodeListContains(nl *NodeListen, deviceType string) bool {
 	for _, ls := range nl.nodeArray {
 		if ls.Node.DeviceType == deviceType {
@@ -127,7 +89,6 @@ func getTimestampFor(nl *NodeListen, deviceType string) time.Time {
 	return time.Time{}
 }
 
-// Helper: Count how many times a node with the given device type appears.
 func countOccurrences(nl *NodeListen, deviceType string) int {
 	count := 0
 	for _, ls := range nl.nodeArray {
