@@ -12,7 +12,7 @@ import (
 
 var Logger = logger.GetLogger()
 
-const ConnectionCheck = -2 * time.Second
+const ConnectionCheck = -200 * time.Millisecond
 
 type LastSeenNode struct {
 	Node     Node
