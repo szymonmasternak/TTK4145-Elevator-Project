@@ -21,6 +21,8 @@ type Elevator struct {
 	State    *elevstate.ElevatorState
 
 	initialised bool
+	running		bool
+	stopChannel chan bool //sending true to this channel will stop the elevator
 }
 
 func NewElevator(identifier string) *Elevator {
@@ -49,6 +51,7 @@ func NewElevator(identifier string) *Elevator {
 		IO:          elevIO,
 		State:       elevState,
 		initialised: true,
+		running:     false,
 	}
 }
 
@@ -58,6 +61,22 @@ func (e *Elevator) Start() {
 		Logger.Error().Msg("Elevator not initialised")
 		return
 	}
+	if e.running {
+		Logger.Error().Msg("Elevator already running")
+		return
+	}
+
+	go func() {
+		for{
+			select {
+			case <-e.stopChannel:
+				e.running = false;
+				return
+			}
+		}
+	}()
+
+	e.running = true
 }
 
 func (e *Elevator) Stop() {
@@ -65,9 +84,12 @@ func (e *Elevator) Stop() {
 		Logger.Error().Msg("Elevator not initialised")
 		return
 	}
-	// TODO
-	// Terminate programme succesfully
-	// Send message that programme is stopping
-	// Close all sockets
-	// etc
+	if !e.running {
+		Logger.Error().Msg("Elevator not running, so cannot stop elevator")
+		return
+	}
+
+	Logger.Debug().Msg("Stopping Elevator")
+
+	e.stopChannel <- true
 }
