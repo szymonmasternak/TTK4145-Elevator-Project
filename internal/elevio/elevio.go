@@ -17,6 +17,11 @@ type ElevIO interface {
 
 type ElevatorIO struct {
 	driver *ElevIODriver
+
+	ChannelButton chan ButtonEvent
+	ChannelFloor  chan int
+	ChannelStop   chan bool
+	ChannelObstr  chan bool
 }
 
 func NewElevatorIO(ipAddress string, numFloors int) (*ElevatorIO, error) {
@@ -26,10 +31,21 @@ func NewElevatorIO(ipAddress string, numFloors int) (*ElevatorIO, error) {
 		Log.Error().Msgf("Error when creating elevator object %v", err)
 		return nil, err
 	}
-
-	return &ElevatorIO{
+	
+	elevio := ElevatorIO{
 		driver: driver,
-	}, nil
+		ChannelButton: make(chan ButtonEvent),
+		ChannelFloor:  make(chan int),
+		ChannelStop:   make(chan bool),
+		ChannelObstr:  make(chan bool),
+	}
+
+	go driver.PollButtons(elevio.ChannelButton)
+	go driver.PollFloorSensor(elevio.ChannelFloor)
+	go driver.PollStopButton(elevio.ChannelStop)
+	go driver.PollObstructionSwitch(elevio.ChannelObstr)
+	
+	return &elevio, nil
 }
 
 func (e *ElevatorIO) FloorIndicator(floor int) {

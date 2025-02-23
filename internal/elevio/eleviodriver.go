@@ -1,13 +1,13 @@
 package elevio
 
 import (
-	"errors"
-	"net"
-	"sync"
 	"time"
+	"sync"
+	"net"
+	"errors"
 )
 
-const pollRate = 20 * time.Millisecond
+const _pollRate = 20 * time.Millisecond
 
 type MotorDirection int
 type ButtonType int
@@ -83,7 +83,7 @@ func (e *ElevIODriver) SetStopLamp(value bool) {
 func (e *ElevIODriver) PollButtons(receiver chan<- ButtonEvent) {
 	prev := make([][3]bool, e.numFloors)
 	for {
-		time.Sleep(pollRate)
+		time.Sleep(_pollRate)
 		for f := 0; f < e.numFloors; f++ {
 			for b := ButtonType(0); b < 3; b++ {
 				v := e.GetButton(b, f)
@@ -93,6 +93,52 @@ func (e *ElevIODriver) PollButtons(receiver chan<- ButtonEvent) {
 				prev[f][b] = v
 			}
 		}
+	}
+}
+
+func (e *ElevIODriver) GetStop() bool {
+	a := e.read([4]byte{8, 0, 0, 0})
+	return toBool(a[1])
+}
+
+func (e *ElevIODriver) GetObstruction() bool {
+	a := e.read([4]byte{9, 0, 0, 0})
+	return toBool(a[1])
+}
+
+func (e *ElevIODriver) PollFloorSensor(receiver chan<- int) {
+	prev := -1
+	for {
+		time.Sleep(_pollRate)
+		v := e.GetFloor()
+		if v != prev && v != -1 {
+			receiver <- v
+		}
+		prev = v
+	}
+}
+
+func (e *ElevIODriver) PollStopButton(receiver chan<- bool) {
+	prev := false
+	for {
+		time.Sleep(_pollRate)
+		v := e.GetStop()
+		if v != prev {
+			receiver <- v
+		}
+		prev = v
+	}
+}
+
+func (e *ElevIODriver) PollObstructionSwitch(receiver chan<- bool) {
+	prev := false
+	for {
+		time.Sleep(_pollRate)
+		v := e.GetObstruction()
+		if v != prev {
+			receiver <- v
+		}
+		prev = v
 	}
 }
 
@@ -138,12 +184,17 @@ func (e *ElevIODriver) read(in [4]byte) [4]byte {
 }
 
 func toByte(a bool) byte {
+	var b byte = 0
 	if a {
-		return 1
+		b = 1
 	}
-	return 0
+	return b
 }
 
 func toBool(a byte) bool {
-	return a != 0
+	var b bool = false
+	if a != 0 {
+		b = true
+	}
+	return b
 }
