@@ -16,11 +16,22 @@ func main() {
 	Logger := logger.GetLogger()
 	gitHash := elevutils.GetGitHash()
 	elevutils.ProcessCmdArgs()
+	//var nodeArray []LastSeenNode
 
-	newNode := node.Node{gitHash, "0.0.0.0", 9999, 1, "unknown"}
+	newNode := node.Node{gitHash, "0.0.0.0", 9999, 1, "elevator1"}
 
 	newNodeB := node.NewNodeBroadcast(newNode, 1000*time.Millisecond)
 	newNodeB.StartBroadcasting()
+
+	newNode2 := node.Node{gitHash, "0.0.0.0", 9999, 2, "elevator2"}
+
+	newNodeB2 := node.NewNodeBroadcast(newNode2, 7000*time.Millisecond)
+	newNodeB2.StartBroadcasting()
+
+	newNode3 := node.Node{gitHash, "0.0.0.0", 9999, 3, "elevator3"}
+
+	newNodeB3 := node.NewNodeBroadcast(newNode3, 5000*time.Millisecond)
+	newNodeB3.StartBroadcasting()
 
 	newNodeL := node.NewNodeListen(newNode)
 	newNodeL.StartListening()
@@ -28,6 +39,7 @@ func main() {
 	for {
 		select {
 		case n := <-newNodeL.NodesFoundOnNetwork:
+			newNodeL.AddNodeToList(n)
 			Logger.Info().Msgf("Node found on network: %v", n.String())
 		}
 	}
