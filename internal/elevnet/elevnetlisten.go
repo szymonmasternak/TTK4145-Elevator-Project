@@ -5,17 +5,26 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 )
 
+const ConnectionCheck = -200 * time.Millisecond
+
+type ElevatorTime struct {
+	ElevatorData elevmetadata.ElevMetaData
+	timeSeen     time.Time
+}
+
 type ElevNetListen struct {
 	ElevatorsFoundOnNetwork chan elevmetadata.ElevMetaData //returns elevators broadcasted on network
 
-	listening    bool                       //internal variable
-	startStopCh  chan int                   //internal variable
-	conn         *net.UDPConn               //internal variable
-	elevMetaData *elevmetadata.ElevMetaData //internal variable
+	listening     bool                       //internal variable
+	startStopCh   chan int                   //internal variable
+	conn          *net.UDPConn               //internal variable
+	elevMetaData  *elevmetadata.ElevMetaData //internal variable
+	elevatorArray []ElevatorTime
 }
 
 func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData) *ElevNetListen {
@@ -83,4 +92,32 @@ func (enl *ElevNetListen) Stop() error {
 	enl.listening = false
 
 	return nil
+}
+
+func (nl *ElevNetListen) AddNodeToList(n elevmetadata.ElevMetaData) {
+	var repeat bool
+	repeat = false
+	for i := 0; i < len(nl.elevatorArray); i++ {
+		if n.Identifier == nl.elevatorArray[i].ElevatorData.Identifier {
+			repeat = true
+			nl.elevatorArray[i].timeSeen = time.Now()
+		}
+	}
+	if !repeat {
+		nl.elevatorArray = append(nl.elevatorArray, ElevatorTime{n, time.Now()})
+	}
+	Logger.Info().Msgf("Node list: ")
+
+	filtered := nl.elevatorArray[:0] // Keep only valid elements
+
+	for i := 0; i < len(nl.elevatorArray); i++ {
+		if nl.elevatorArray[i].timeSeen.After(time.Now().Add(ConnectionCheck)) {
+			filtered = append(filtered, nl.elevatorArray[i]) // Keep only non-stale nodes
+			fmt.Printf("%v, ", nl.elevatorArray[i].ElevatorData.Identifier)
+		} else {
+			Logger.Info().Msg("Node timed out, removing from the list")
+		}
+	}
+	fmt.Printf("\n")
+	nl.elevatorArray = filtered // Update original slice
 }
