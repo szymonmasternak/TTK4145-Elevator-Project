@@ -16,11 +16,10 @@ import (
 var Logger = logger.GetLogger()
 
 func main() {
-	// Starting Programme
-	Logger.Info().Msg("Starting Elevator Programme")
-
 	identifier := elevutils.ProcessCmdArgs()
 
+	// Starting Programme
+	Logger.Info().Msg("Starting Elevator Programme")
 	elev := elevator.NewElevator(identifier)
 
 	Logger.Info().Msgf("Elevator: %v", elev.MetaData.String())

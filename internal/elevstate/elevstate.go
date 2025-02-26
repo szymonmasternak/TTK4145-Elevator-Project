@@ -101,11 +101,9 @@ func (es *ElevatorState) FsmOnRequestButtonPress(btn_floor int, btn_type elevcon
 
 	case elevconsts.Idle:
 		es.Requests[btn_floor][btn_type] = 1
-		pair := es.RequestsChooseDirection()
-		es.Dirn = pair.Dirn
-		es.Behaviour = pair.Behaviour
+		es.Dirn, es.Behaviour = es.RequestsChooseDirection()
 
-		switch pair.Behaviour {
+		switch es.Behaviour {
 		case elevconsts.DoorOpen:
 			es.io.DoorLight(1)
 			es.endTime = time.Now().Add(es.doorOpenDuration_s)
@@ -120,7 +118,6 @@ func (es *ElevatorState) FsmOnRequestButtonPress(btn_floor int, btn_type elevcon
 	}
 
 	es.setAllLights()
-
 	Log.Info().Msgf("New state:")
 }
 
@@ -155,9 +152,7 @@ func (es *ElevatorState) FsmOnDoorTimeout() {
 		es.io.DoorLight(0)
 
 		// Choose next action
-		pair := es.RequestsChooseDirection()
-		es.Dirn = pair.Dirn
-		es.Behaviour = pair.Behaviour
+		es.Dirn, es.Behaviour = es.RequestsChooseDirection()
 
 		switch es.Behaviour {
 		case elevconsts.DoorOpen:

@@ -2,12 +2,6 @@ package elevstate
 
 import "github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 
-// Struct equivalent to DirnBehaviourPair
-type DirnBehaviourPair struct {
-	Dirn      elevconsts.Dirn
-	Behaviour elevconsts.ElevatorBehaviour
-}
-
 func (es *ElevatorState) requestsAbove() bool {
 	for f := es.Floor + 1; f < elevconsts.N_FLOORS; f++ {
 		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
@@ -40,34 +34,37 @@ func (es *ElevatorState) requestsHere() bool {
 }
 
 // Determines the direction and behavior of the elevator
-func (es *ElevatorState) RequestsChooseDirection() DirnBehaviourPair {
+func (es *ElevatorState) RequestsChooseDirection() (elevconsts.Dirn, elevconsts.ElevatorBehaviour) {
 	switch es.Dirn {
 	case elevconsts.Up:
-		if es.requestsAbove() {
-			return DirnBehaviourPair{elevconsts.Up, elevconsts.Moving}
-		} else if es.requestsHere() {
-			return DirnBehaviourPair{elevconsts.Down, elevconsts.DoorOpen}
-		} else if es.requestsBelow() {
-			return DirnBehaviourPair{elevconsts.Down, elevconsts.Moving}
+		switch {
+		case es.requestsAbove():
+			return elevconsts.Up, elevconsts.Moving
+		case es.requestsHere():
+			return elevconsts.Down, elevconsts.DoorOpen
+		case es.requestsBelow():
+			return elevconsts.Down, elevconsts.Moving
 		}
 	case elevconsts.Down:
-		if es.requestsBelow() {
-			return DirnBehaviourPair{elevconsts.Down, elevconsts.Moving}
-		} else if es.requestsHere() {
-			return DirnBehaviourPair{elevconsts.Up, elevconsts.DoorOpen}
-		} else if es.requestsAbove() {
-			return DirnBehaviourPair{elevconsts.Up, elevconsts.Moving}
+		switch {
+		case es.requestsBelow():
+			return elevconsts.Down, elevconsts.Moving
+		case es.requestsHere():
+			return elevconsts.Up, elevconsts.DoorOpen
+		case es.requestsAbove():
+			return elevconsts.Up, elevconsts.Moving
 		}
 	case elevconsts.Stop:
-		if es.requestsHere() {
-			return DirnBehaviourPair{elevconsts.Stop, elevconsts.DoorOpen}
-		} else if es.requestsAbove() {
-			return DirnBehaviourPair{elevconsts.Up, elevconsts.Moving}
-		} else if es.requestsBelow() {
-			return DirnBehaviourPair{elevconsts.Down, elevconsts.Moving}
+		switch {
+		case es.requestsHere():
+			return elevconsts.Stop, elevconsts.DoorOpen
+		case es.requestsAbove():
+			return elevconsts.Up, elevconsts.Moving
+		case es.requestsBelow():
+			return elevconsts.Down, elevconsts.Moving
 		}
 	}
-	return DirnBehaviourPair{elevconsts.Stop, elevconsts.Idle}
+	return elevconsts.Stop, elevconsts.Idle
 }
 
 func (es *ElevatorState) RequestsShouldStop() bool {
