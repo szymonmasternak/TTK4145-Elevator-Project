@@ -1,10 +1,10 @@
 package elevio
 
 import (
-	"time"
-	"sync"
-	"net"
 	"errors"
+	"net"
+	"sync"
+	"time"
 )
 
 const _pollRate = 20 * time.Millisecond
@@ -16,7 +16,6 @@ type ButtonEvent struct {
 	Floor  int
 	Button ButtonType
 }
-
 type ElevIODriver struct {
 	conn        net.Conn
 	mtx         sync.Mutex

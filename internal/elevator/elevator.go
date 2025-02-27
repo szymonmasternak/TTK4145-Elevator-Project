@@ -1,6 +1,8 @@
 package elevator
 
 import (
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevevent"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevio"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevnet"
@@ -20,8 +22,11 @@ type Elevator struct {
 	IO       *elevio.ElevatorIO
 	State    *elevstate.ElevatorState
 
+	eventChannel   chan elevevent.ElevatorEvent
+	commandChannel chan elevcmd.ElevatorCommand
+
 	initialised bool
-	running		bool
+	running     bool
 	stopChannel chan bool //sending true to this channel will stop the elevator
 }
 
@@ -38,20 +43,25 @@ func NewElevator(identifier string) *Elevator {
 		Identifier:      identifier,
 	}
 
-	elevIO, err := elevio.NewElevatorIO("localhost:15657", 4)
+	eventChannel := make(chan elevevent.ElevatorEvent, 10)
+	commandChannel := make(chan elevcmd.ElevatorCommand, 1)
+
+	elevIO, err := elevio.NewElevatorIO("localhost:15657", 4, eventChannel, commandChannel)
 	if err != nil {
 		panic("Error Creating ElevIO Object")
 	}
 
-	elevState := elevstate.NewElevatorState(elevIO)
+	elevState := elevstate.NewElevatorState(eventChannel, commandChannel)
 
 	return &Elevator{
-		MetaData:    elevatorMetadata,
-		Network:     elevnet.NewElevatorNetwork(elevatorMetadata),
-		IO:          elevIO,
-		State:       elevState,
-		initialised: true,
-		running:     false,
+		MetaData:       elevatorMetadata,
+		Network:        elevnet.NewElevatorNetwork(elevatorMetadata),
+		IO:             elevIO,
+		State:          elevState,
+		initialised:    true,
+		running:        false,
+		eventChannel:   eventChannel,
+		commandChannel: commandChannel,
 	}
 }
 
@@ -67,10 +77,10 @@ func (e *Elevator) Start() {
 	}
 
 	go func() {
-		for{
+		for {
 			select {
 			case <-e.stopChannel:
-				e.running = false;
+				e.running = false
 				return
 			}
 		}
