@@ -41,21 +41,10 @@ func NewElevIODriver(addr string, numFloors int) (*ElevIODriver, error) {
 		return nil, errors.New("failed to connect to elevator")
 	}
 
-	//Goroutine to stop the program when disconnected from elevator
-	go func() {
-		buffer := make([]byte, 1)
-		for {
-			_, err := conn.Read(buffer)
-			if err != nil {
-				panic("Elevator connection lost: " + err.Error())
-			}
-			time.Sleep(time.Millisecond) //Lets not overload the processor by pinging too fast
-		}
-	}()
-
 	return &ElevIODriver{
-		conn:      conn,
-		numFloors: numFloors,
+		conn:        conn,
+		numFloors:   numFloors,
+		initialized: true,
 	}, nil
 }
 

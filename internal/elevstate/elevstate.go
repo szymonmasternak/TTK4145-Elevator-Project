@@ -21,7 +21,7 @@ type ElevatorState struct {
 	//Internal Variables
 	clearRequestVariant elevconsts.ClearRequestVariant
 	doorOpenDuration    time.Duration
-	doorCloseTime       time.Time
+	doorOpenTime        time.Time
 	eventChannel        <-chan elevevent.ElevatorEvent
 	commandChannel      chan<- elevcmd.ElevatorCommand
 }
@@ -35,7 +35,7 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 		doorOpenDuration:    time.Second * 3,
 		eventChannel:        eventChannel,
 		commandChannel:      commandChannel,
-		doorCloseTime:       time.Now(),
+		doorOpenTime:        time.Now(),
 	}
 
 	elevatorState.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.RequestFloorCommand{}}
@@ -73,7 +73,11 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 				case elevevent.RequestFloorEvent:
 					Log.Error().Msgf("RequestFloorEvent should not occur")
 				}
-
+			default:
+				if time.Now().After(elevatorState.doorOpenTime.Add(elevatorState.doorOpenDuration)) && elevatorState.Behaviour == elevconsts.DoorOpen {
+					Log.Warn().Msgf("Door timeout Event")
+					elevatorState.FsmOnDoorTimeout()
+				}
 			}
 		}
 	}()
@@ -125,7 +129,7 @@ func (es *ElevatorState) FsmOnRequestButtonPress(btn_floor int, btn_type elevcon
 	switch es.Behaviour {
 	case elevconsts.DoorOpen:
 		if es.RequestsShouldClearImmediately(btn_floor, btn_type) {
-			es.doorCloseTime = time.Now().Add(es.doorOpenDuration)
+			es.doorOpenTime = time.Now().Add(es.doorOpenDuration)
 		} else {
 			es.Requests[btn_floor][btn_type] = 1
 		}
@@ -139,9 +143,8 @@ func (es *ElevatorState) FsmOnRequestButtonPress(btn_floor int, btn_type elevcon
 
 		switch es.Behaviour {
 		case elevconsts.DoorOpen:
-
 			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
-			es.doorCloseTime = time.Now().Add(es.doorOpenDuration)
+			es.doorOpenTime = time.Now().Add(es.doorOpenDuration)
 			es.RequestsClearAtCurrentFloor()
 
 		case elevconsts.Moving:
@@ -170,7 +173,7 @@ func (es *ElevatorState) FsmOnFloorArrival(newFloor int) {
 			//elevator = es.RequestsClearAtCurrentFloor(elevator)
 			es.RequestsClearAtCurrentFloor()
 			// Timer_start(elevator.doorOpenDuration)
-			es.doorCloseTime = time.Now().Add(es.doorOpenDuration)
+			es.doorOpenTime = time.Now().Add(es.doorOpenDuration)
 			es.setAllLights()
 			es.Behaviour = elevconsts.DoorOpen
 		}
@@ -190,7 +193,7 @@ func (es *ElevatorState) FsmOnDoorTimeout() {
 		case elevconsts.DoorOpen:
 			// Restart timer if the elevator still has a request at this floor
 			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
-			es.doorCloseTime = time.Now().Add(es.doorOpenDuration)
+			es.doorOpenTime = time.Now().Add(es.doorOpenDuration)
 			// elevator = Requests_clearAtCurrentFloor(elevator)
 			es.RequestsClearAtCurrentFloor()
 			es.setAllLights()
