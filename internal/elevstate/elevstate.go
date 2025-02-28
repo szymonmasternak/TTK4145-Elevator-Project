@@ -35,6 +35,7 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 		doorOpenDuration:    time.Second * 3,
 		eventChannel:        eventChannel,
 		commandChannel:      commandChannel,
+		doorCloseTime:       time.Now(),
 	}
 
 	elevatorState.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.RequestFloorCommand{}}
