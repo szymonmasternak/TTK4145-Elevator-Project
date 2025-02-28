@@ -61,12 +61,12 @@ func NewElevatorIO(ipAddress string, numFloors int, eventChannel chan<- eleveven
 			case floor := <-elevio.channelFloor:
 				Log.Debug().Msgf("Received channelFloor %v", floor)
 				elevio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.FloorSensorEvent{Floor: floor}}
-			case <-elevio.channelStop:
+			case val := <-elevio.channelStop:
 				Log.Debug().Msgf("Received channelStop")
-				elevio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.StopButtonEvent{}}
-			case <-elevio.channelObstr:
+				elevio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.StopButtonEvent{Value: val}}
+			case val := <-elevio.channelObstr:
 				Log.Debug().Msgf("Received channelObstr")
-				elevio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ObstructionEvent{}}
+				elevio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ObstructionEvent{Value: val}}
 			default:
 				if elevio.requestedFloor {
 					Log.Debug().Msgf("Received requestedFloor")
@@ -81,23 +81,24 @@ func NewElevatorIO(ipAddress string, numFloors int, eventChannel chan<- eleveven
 		for {
 			select {
 			case command := <-elevio.commandChannel:
+				Log.Debug().Msgf("Received command %v", command.CommandType())
 				switch cmd := command.Value.(type) {
 				case elevcmd.MotorDirCommand:
-					Log.Debug().Msgf("Received command %v", command.CommandType())
 					elevio.driver.SetMotorDirection(MotorDirection(cmd.Dir))
+				case elevcmd.ButtonLightArrayCommand:
+					for i := 0; i < len(cmd.Array); i++ {
+						element := cmd.Array[i]
+						elevio.driver.SetButtonLamp(ButtonType(element.Button), element.Floor, element.Value)
+					}
 				case elevcmd.ButtonLightCommand:
 					elevio.driver.SetButtonLamp(ButtonType(cmd.Button), cmd.Floor, cmd.Value)
 				case elevcmd.FloorIndicatorCommand:
-					Log.Debug().Msgf("Received command %v", command.CommandType())
 					elevio.driver.SetFloorIndicator(cmd.Floor)
 				case elevcmd.DoorOpenCommand:
-					Log.Debug().Msgf("Received command %v", command.CommandType())
 					elevio.driver.SetDoorOpenLamp(true)
 				case elevcmd.DoorCloseCommand:
-					Log.Debug().Msgf("Received command %v", command.CommandType())
 					elevio.driver.SetDoorOpenLamp(false)
 				case elevcmd.StopLampCommand:
-					Log.Debug().Msgf("Received command %v", command.CommandType())
 					elevio.driver.SetStopLamp(cmd.Value)
 				case elevcmd.RequestFloorCommand:
 					elevio.requestedFloor = true

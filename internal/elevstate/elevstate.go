@@ -20,6 +20,8 @@ type ElevatorState struct {
 
 	//Internal Variables
 	clearRequestVariant elevconsts.ClearRequestVariant
+	obstructionSensor   bool
+	stopButton          bool
 	doorOpenDuration    time.Duration
 	doorOpenTime        time.Time
 	eventChannel        <-chan elevevent.ElevatorEvent
@@ -35,7 +37,9 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 		doorOpenDuration:    time.Second * 3,
 		eventChannel:        eventChannel,
 		commandChannel:      commandChannel,
-		doorOpenTime:        time.Now(),
+		stopButton:          false,
+		obstructionSensor:   false,
+		doorOpenTime:        time.Time{}, //Returns zero value, since we dont know when it was last open
 	}
 
 	elevatorState.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.RequestFloorCommand{}}
@@ -63,20 +67,27 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 			case event := <-elevatorState.eventChannel:
 				switch evnt := event.Value.(type) {
 				case elevevent.FloorSensorEvent:
-					elevatorState.FsmOnFloorArrival(evnt.Floor)
+					elevatorState.handleFloorArrival(evnt.Floor)
 				case elevevent.ButtonPressEvent:
-					elevatorState.FsmOnRequestButtonPress(evnt.Floor, evnt.Button)
+					Log.Info().Msgf("Button Has Been Pressed (%d, %s)", evnt.Button, evnt.Button.String())
+					elevatorState.handleButtonPress(evnt.Floor, evnt.Button)
 				case elevevent.StopButtonEvent:
-					Log.Error().Msgf("StopButtonEvent not implemented")
+					Log.Info().Msgf("Stop Button is %v", evnt.Value)
+					elevatorState.handleStopButton(evnt.Value)
 				case elevevent.ObstructionEvent:
-					Log.Error().Msgf("ObstructionEvent not implemented")
+					Log.Info().Msgf("Obstruction Button is %v", evnt.Value)
+					elevatorState.handleObstruction(evnt.Value)
 				case elevevent.RequestFloorEvent:
 					Log.Error().Msgf("RequestFloorEvent should not occur")
 				}
 			default:
-				if time.Now().After(elevatorState.doorOpenTime.Add(elevatorState.doorOpenDuration)) && elevatorState.Behaviour == elevconsts.DoorOpen {
-					Log.Warn().Msgf("Door timeout Event")
-					elevatorState.FsmOnDoorTimeout()
+				if time.Now().After(elevatorState.doorOpenTime.Add(elevatorState.doorOpenDuration)) {
+					if elevatorState.Behaviour == elevconsts.DoorOpen {
+						if !elevatorState.stopButton {
+							Log.Warn().Msgf("Door timeout Event")
+							elevatorState.handleDoorTimeout()
+						}
+					}
 				}
 			}
 		}
@@ -115,30 +126,42 @@ func (es *ElevatorState) Print() {
 	Log.Info().Msgf("  +--------------------+")
 }
 
-func (es *ElevatorState) setAllLights() {
+func (es *ElevatorState) setAllLightsSequence() {
+	var buttonArray [elevconsts.N_FLOORS * elevconsts.N_BUTTONS]elevcmd.ButtonLightCommand
+
 	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
 		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
-			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.ButtonLightCommand{Floor: floor, Button: elevconsts.Button(btn), Value: es.Requests[floor][btn] != 0}}
+			i := floor*elevconsts.N_BUTTONS + btn
+			buttonArray[i] = elevcmd.ButtonLightCommand{
+				Floor:  floor,
+				Button: elevconsts.Button(btn),
+				Value:  es.Requests[floor][btn] != 0,
+			}
 		}
 	}
+
+	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.ButtonLightArrayCommand{Array: buttonArray}}
 }
 
-func (es *ElevatorState) FsmOnRequestButtonPress(btn_floor int, btn_type elevconsts.Button) {
-	Log.Info().Msgf("Button Has Been Pressed (%d, %s)", btn_floor, btn_type.String())
+func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Button) {
+	if es.stopButton {
+		Log.Warn().Msgf("Stop Button Pressed, not responding to button presses")
+		return
+	}
 
 	switch es.Behaviour {
 	case elevconsts.DoorOpen:
-		if es.RequestsShouldClearImmediately(btn_floor, btn_type) {
+		if es.RequestsShouldClearImmediately(btnFloor, btnType) {
 			es.doorOpenTime = time.Now().Add(es.doorOpenDuration)
 		} else {
-			es.Requests[btn_floor][btn_type] = 1
+			es.Requests[btnFloor][btnType] = 1
 		}
 
 	case elevconsts.Moving:
-		es.Requests[btn_floor][btn_type] = 1
+		es.Requests[btnFloor][btnType] = 1
 
 	case elevconsts.Idle:
-		es.Requests[btn_floor][btn_type] = 1
+		es.Requests[btnFloor][btnType] = 1
 		es.Dirn, es.Behaviour = es.RequestsChooseDirection()
 
 		switch es.Behaviour {
@@ -149,62 +172,61 @@ func (es *ElevatorState) FsmOnRequestButtonPress(btn_floor int, btn_type elevcon
 
 		case elevconsts.Moving:
 			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: es.Dirn}}
-
-		case elevconsts.Idle:
-			// Do nothing
 		}
 	}
 
-	es.setAllLights()
+	es.setAllLightsSequence()
 }
 
 // Handles elevator arrival at a new floor
-func (es *ElevatorState) FsmOnFloorArrival(newFloor int) {
+func (es *ElevatorState) handleFloorArrival(newFloor int) {
 	es.Floor = newFloor
-
 	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.FloorIndicatorCommand{Floor: es.Floor}}
 
-	switch es.Behaviour {
-	case elevconsts.Moving:
-		if es.RequestsShouldStop() {
+	if es.Behaviour == elevconsts.Moving && es.RequestsShouldStop() {
+		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Stop}}
+		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
 
-			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Stop}}
-			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
-			//elevator = es.RequestsClearAtCurrentFloor(elevator)
-			es.RequestsClearAtCurrentFloor()
-			// Timer_start(elevator.doorOpenDuration)
-			es.doorOpenTime = time.Now()
-			es.setAllLights()
-			es.Behaviour = elevconsts.DoorOpen
-		}
+		es.doorOpenTime = time.Now()
+		es.RequestsClearAtCurrentFloor()
+		es.setAllLightsSequence()
+		es.Behaviour = elevconsts.DoorOpen
 	}
 }
 
 // Handles door timeout event
-func (es *ElevatorState) FsmOnDoorTimeout() {
-	if es.Behaviour == elevconsts.DoorOpen {
-		// Turn off door light (Close door)
-		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorCloseCommand{}}
-
-		// Choose next action
-		es.Dirn, es.Behaviour = es.RequestsChooseDirection()
-
-		switch es.Behaviour {
-		case elevconsts.DoorOpen:
-			// Restart timer if the elevator still has a request at this floor
-			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
-			es.doorOpenTime = time.Now()
-			// elevator = Requests_clearAtCurrentFloor(elevator)
-			es.RequestsClearAtCurrentFloor()
-			es.setAllLights()
-
-		case elevconsts.Moving:
-			// Move the elevator in the chosen direction
-			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: es.Dirn}}
-
-		case elevconsts.Idle:
-			// Do nothing, elevator stays idle
-		}
+func (es *ElevatorState) handleDoorTimeout() {
+	if es.obstructionSensor && es.Behaviour == elevconsts.DoorOpen {
+		Log.Warn().Msgf("Obstruction Detected, not trying to close door for another %v", es.doorOpenDuration.String())
+		es.doorOpenTime = time.Now()
+		return
 	}
-	Log.Info().Msg("New state after door timeout")
+
+	es.Dirn, es.Behaviour = es.RequestsChooseDirection()
+
+	switch es.Behaviour {
+	case elevconsts.DoorOpen:
+		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
+		es.doorOpenTime = time.Now()
+		es.RequestsClearAtCurrentFloor()
+		es.setAllLightsSequence()
+	case elevconsts.Moving:
+		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorCloseCommand{}} //This was moved from top of function
+		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: es.Dirn}}
+	}
+}
+
+func (es *ElevatorState) handleStopButton(stopButtonState bool) {
+	es.stopButton = stopButtonState
+
+	if es.stopButton {
+		es.Dirn = elevconsts.Stop
+	} else {
+		es.Dirn, es.Behaviour = es.RequestsChooseDirection()
+	}
+	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: es.Dirn}}
+}
+
+func (es *ElevatorState) handleObstruction(obstructionState bool) {
+	es.obstructionSensor = obstructionState
 }

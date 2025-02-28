@@ -25,10 +25,16 @@ type MotorDirCommand struct {
 	Dir elevconsts.Dirn
 }
 
+// Sets single button command
 type ButtonLightCommand struct {
 	Floor  int
 	Button elevconsts.Button
 	Value  bool
+}
+
+// Sets all button lights command
+type ButtonLightArrayCommand struct {
+	Array [elevconsts.N_FLOORS * elevconsts.N_BUTTONS]ButtonLightCommand
 }
 
 type FloorIndicatorCommand struct {
@@ -48,6 +54,8 @@ func (e *ElevatorCommand) CommandType() string {
 		return "MotorDirCommand"
 	case ButtonLightCommand:
 		return "ButtonLightCommand"
+	case ButtonLightArrayCommand:
+		return "ButtonLightArrayCommands"
 	case FloorIndicatorCommand:
 		return "FloorIndicatorCommand"
 	case StopLampCommand:

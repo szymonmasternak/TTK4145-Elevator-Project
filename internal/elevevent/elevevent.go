@@ -21,9 +21,11 @@ type FloorSensorEvent struct {
 }
 
 type StopButtonEvent struct {
+	Value bool //Active-high
 }
 
 type ObstructionEvent struct {
+	Value bool //Active-high
 }
 
 type RequestFloorEvent struct {
