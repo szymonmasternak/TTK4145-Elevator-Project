@@ -4,7 +4,9 @@ import (
 	_ "embed"
 	"flag"
 	"fmt"
+	"net"
 	"os"
+	"strings"
 )
 
 //go:generate sh -c "printf %s $(git rev-parse HEAD) > githash.txt"
@@ -15,9 +17,10 @@ func GetGitHash() string {
 	return gitHash
 }
 
-func ProcessCmdArgs() {
+func ProcessCmdArgs() string {
 	help := flag.Bool("help", false, "Show Help Window")
 	version := flag.Bool("version", false, "Show Version")
+	identifier := flag.String("id", "", "Set the identifier of the elevator. Defaults to random string")
 
 	flag.Parse()
 
@@ -42,4 +45,20 @@ func ProcessCmdArgs() {
 		fmt.Println("	Copyright (c) 2025 All Rights Reserved")
 		os.Exit(0)
 	}
+
+	return *identifier
+}
+
+var localIP string //local string, not to be accessed anywhere
+
+func GetLocalIP() string {
+	if localIP == "" {
+		conn, err := net.DialTCP("tcp4", nil, &net.TCPAddr{IP: []byte{8, 8, 8, 8}, Port: 53})
+		if err != nil {
+			panic(err)
+		}
+		defer conn.Close()
+		localIP = strings.Split(conn.LocalAddr().String(), ":")[0]
+	}
+	return localIP
 }

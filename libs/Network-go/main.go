@@ -19,6 +19,9 @@ type HelloMsg struct {
 }
 
 func main() {
+	//FOR THE ELEVATOR ALGORITHM WE NEED TO REMEEMBER TO INIT elevator_hardware_init()
+
+	
 	// Our id can be anything. Here we pass it on the command line, using
 	//  `go run main.go -id=our_id`
 	var id string
