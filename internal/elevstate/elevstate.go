@@ -202,6 +202,7 @@ func (es *ElevatorState) handleDoorTimeout() {
 		return
 	}
 
+	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorCloseCommand{}}
 	es.Dirn, es.Behaviour = es.RequestsChooseDirection()
 
 	switch es.Behaviour {
@@ -211,7 +212,6 @@ func (es *ElevatorState) handleDoorTimeout() {
 		es.RequestsClearAtCurrentFloor()
 		es.setAllLightsSequence()
 	case elevconsts.Moving:
-		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorCloseCommand{}} //This was moved from top of function
 		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: es.Dirn}}
 	}
 }
