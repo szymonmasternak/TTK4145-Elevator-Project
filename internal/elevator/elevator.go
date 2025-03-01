@@ -1,7 +1,11 @@
 package elevator
 
 import (
+	"context"
+	"sync"
+
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevevent"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevio"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
@@ -25,33 +29,36 @@ type Elevator struct {
 	eventChannel   chan elevevent.ElevatorEvent
 	commandChannel chan elevcmd.ElevatorCommand
 
-	initialised bool
+	initialised bool //set to true if initialised via NewElevator Function
 	running     bool
-	stopChannel chan bool //sending true to this channel will stop the elevator
+
+	//used for graceful shutdown
+	waitGroupArray []*sync.WaitGroup
+	cancelArray    []context.CancelFunc
 }
 
-func NewElevator(identifier string) *Elevator {
+func NewElevator(identifier string, portNumber uint16, clearUpDownOnArrival bool) *Elevator {
 	if identifier == "" {
 		identifier = randomstring.EnglishFrequencyString(10) //this should be random enough
-		Logger.Warn().Msgf("No identifier provided, generated random identifier \"%v\"", identifier)
+		Logger.Warn().Msgf("No elevator identifier provided, generated random identifier \"%v\"", identifier)
 	}
 
 	elevatorMetadata := &elevmetadata.ElevMetaData{
 		SoftwareVersion: elevutils.GetGitHash(),
 		IpAddress:       elevutils.GetLocalIP(),
-		PortNumber:      9999,
+		PortNumber:      portNumber,
 		Identifier:      identifier,
 	}
 
 	eventChannel := make(chan elevevent.ElevatorEvent, 10)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 1)
 
-	elevIO, err := elevio.NewElevatorIO("localhost:15657", 4, eventChannel, commandChannel)
+	elevIO, err := elevio.NewElevatorIO("localhost:15657", elevconsts.N_FLOORS, eventChannel, commandChannel)
 	if err != nil {
 		panic("Error Creating ElevIO Object")
 	}
 
-	elevState := elevstate.NewElevatorState(eventChannel, commandChannel)
+	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
 
 	return &Elevator{
 		MetaData:       elevatorMetadata,
@@ -66,7 +73,6 @@ func NewElevator(identifier string) *Elevator {
 }
 
 func (e *Elevator) Start() {
-	// TODO setup all channels?
 	if !e.initialised {
 		Logger.Error().Msg("Elevator not initialised")
 		return
@@ -76,15 +82,21 @@ func (e *Elevator) Start() {
 		return
 	}
 
-	go func() {
-		for {
-			select {
-			case <-e.stopChannel:
-				e.running = false
-				return
-			}
-		}
-	}()
+	//Launch Threads One By One
+	ctxIO, cancelIO := context.WithCancel(context.Background())
+	wgIO := &sync.WaitGroup{}
+	e.waitGroupArray = append(e.waitGroupArray, wgIO)
+	e.IO.Start(ctxIO, wgIO)
+	e.cancelArray = append(e.cancelArray, cancelIO)
+
+	//Launch Threads One by One
+	ctxState, cancelState := context.WithCancel(context.Background())
+	wgState := &sync.WaitGroup{}
+	e.waitGroupArray = append(e.waitGroupArray, wgState)
+	e.State.Start(ctxState, wgState)
+	e.cancelArray = append(e.cancelArray, cancelState)
+
+	//Todo add other threads
 
 	e.running = true
 }
@@ -101,5 +113,12 @@ func (e *Elevator) Stop() {
 
 	Logger.Debug().Msg("Stopping Elevator")
 
-	e.stopChannel <- true
+	//Gracefully shutdown all threads one by one
+	for i := len(e.cancelArray) - 1; i >= 0; i-- {
+		e.cancelArray[i]()
+		e.waitGroupArray[i].Wait()
+	}
+
+	Logger.Debug().Msg("Stopped Elevator")
+	e.running = false
 }

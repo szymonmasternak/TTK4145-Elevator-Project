@@ -12,7 +12,7 @@ var Log = logger.GetLogger()
 type ElevMetaData struct {
 	SoftwareVersion string `json:"software_version"`
 	IpAddress       string `json:"ip_address"`
-	PortNumber      int    `json:"port_number"`
+	PortNumber      uint16 `json:"port_number"`
 	Identifier      string `json:"identifier"`
 }
 
