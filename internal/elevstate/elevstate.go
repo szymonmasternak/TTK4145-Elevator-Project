@@ -1,6 +1,8 @@
 package elevstate
 
 import (
+	"context"
+	"sync"
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
@@ -28,12 +30,17 @@ type ElevatorState struct {
 	commandChannel      chan<- elevcmd.ElevatorCommand
 }
 
-func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand) *ElevatorState {
+func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool) *ElevatorState {
+	clearRequestVariant := elevconsts.InDirn
+	if clearUpDownOnArrival {
+		clearRequestVariant = elevconsts.All
+	}
+
 	elevatorState := &ElevatorState{
 		Floor:               -1,
 		Dirn:                elevconsts.Stop,
 		Behaviour:           elevconsts.Idle,
-		clearRequestVariant: elevconsts.InDirn, //TODO: Verify and maybe change?
+		clearRequestVariant: clearRequestVariant,
 		doorOpenDuration:    time.Second * 3,
 		eventChannel:        eventChannel,
 		commandChannel:      commandChannel,
@@ -41,59 +48,70 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 		obstructionSensor:   false,
 		doorOpenTime:        time.Time{}, //Returns zero value, since we dont know when it was last open
 	}
+	return elevatorState
+}
 
-	elevatorState.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.RequestFloorCommand{}}
+func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) {
+	waitGroup.Add(1) //One Thread
+
+	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.RequestFloorCommand{}}
 
 	//TODO: Add a timeout event to this for safety
 	for {
-		event := <-eventChannel
+		event := <-es.eventChannel
 		req, ok := event.Value.(elevevent.RequestFloorEvent)
 		if ok {
-			elevatorState.Floor = req.Floor
+			es.Floor = req.Floor
 			break
 		}
 	}
 
-	if elevatorState.Floor == -1 {
+	if es.Floor == -1 {
 		Log.Info().Msgf("Elevator initialized between floors, moving down to nearest floor")
-		elevatorState.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Down}}
-		elevatorState.Dirn = elevconsts.Down
-		elevatorState.Behaviour = elevconsts.Moving
+		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Down}}
+		es.Dirn = elevconsts.Down
+		es.Behaviour = elevconsts.Moving
 	}
 
 	go func() {
+		defer waitGroup.Done()
 		for {
 			select {
-			case event := <-elevatorState.eventChannel:
+			case <-ctx.Done():
+				Log.Warn().Msgf("ElevatorState Go routine has been signaled to stop")
+				if es.Dirn != elevconsts.Stop {
+					Log.Warn().Msgf("Elevator is not stopped, stopping it")
+					es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Stop}}
+				}
+				return
+			case event := <-es.eventChannel:
 				switch evnt := event.Value.(type) {
 				case elevevent.FloorSensorEvent:
-					elevatorState.handleFloorArrival(evnt.Floor)
+					es.handleFloorArrival(evnt.Floor)
 				case elevevent.ButtonPressEvent:
 					Log.Info().Msgf("Button Has Been Pressed (%d, %s)", evnt.Button, evnt.Button.String())
-					elevatorState.handleButtonPress(evnt.Floor, evnt.Button)
+					es.handleButtonPress(evnt.Floor, evnt.Button)
 				case elevevent.StopButtonEvent:
 					Log.Info().Msgf("Stop Button is %v", evnt.Value)
-					elevatorState.handleStopButton(evnt.Value)
+					es.handleStopButton(evnt.Value)
 				case elevevent.ObstructionEvent:
 					Log.Info().Msgf("Obstruction Button is %v", evnt.Value)
-					elevatorState.handleObstruction(evnt.Value)
+					es.handleObstruction(evnt.Value)
 				case elevevent.RequestFloorEvent:
 					Log.Error().Msgf("RequestFloorEvent should not occur")
 				}
 			default:
-				if time.Now().After(elevatorState.doorOpenTime.Add(elevatorState.doorOpenDuration)) {
-					if elevatorState.Behaviour == elevconsts.DoorOpen {
-						if !elevatorState.stopButton {
+				if time.Now().After(es.doorOpenTime.Add(es.doorOpenDuration)) {
+					if es.Behaviour == elevconsts.DoorOpen {
+						if !es.stopButton {
 							Log.Warn().Msgf("Door timeout Event")
-							elevatorState.handleDoorTimeout()
+							es.handleDoorTimeout()
 						}
 					}
 				}
 			}
 		}
 	}()
-
-	return elevatorState
 }
 
 func (es *ElevatorState) Print() {

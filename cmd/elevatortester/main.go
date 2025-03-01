@@ -10,12 +10,13 @@ import (
 var Logger = logger.GetLoggerConfigured(zerolog.DebugLevel)
 
 func main() {
-	identifier := elevutils.ProcessCmdArgs()
+	identifier, portNumber, clearAllRequestsAtFloorArrival := elevutils.ProcessCmdArgs()
 
 	// Starting Programme
 	Logger.Info().Msg("Starting Elevator Programme")
 
-	elev := elevator.NewElevator(identifier)
+	elev := elevator.NewElevator(identifier, portNumber, clearAllRequestsAtFloorArrival)
+	elev.Start()
 
 	Logger.Info().Msgf("Elevator: %v", elev.MetaData.String())
 
