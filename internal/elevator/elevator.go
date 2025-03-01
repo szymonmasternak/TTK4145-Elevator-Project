@@ -20,6 +20,13 @@ import (
 
 var Logger = logger.GetLogger()
 
+const (
+	EVENT_CHANNEL_SIZE     = 10
+	COMMAND_CHANNEL_SIZE   = 1
+	IDENTIFIER_DEFAULT_LEN = 10
+	DEFAULT_DRIVER_ADDRESS = "localhost:15657"
+)
+
 type Elevator struct {
 	MetaData *elevmetadata.ElevMetaData //this contains all elevator constant metadata
 	Network  *elevnet.ElevatorNetwork
@@ -39,7 +46,7 @@ type Elevator struct {
 
 func NewElevator(identifier string, portNumber uint16, clearUpDownOnArrival bool) *Elevator {
 	if identifier == "" {
-		identifier = randomstring.EnglishFrequencyString(10) //this should be random enough
+		identifier = randomstring.EnglishFrequencyString(IDENTIFIER_DEFAULT_LEN) //this should be random enough
 		Logger.Warn().Msgf("No elevator identifier provided, generated random identifier \"%v\"", identifier)
 	}
 
@@ -50,10 +57,10 @@ func NewElevator(identifier string, portNumber uint16, clearUpDownOnArrival bool
 		Identifier:      identifier,
 	}
 
-	eventChannel := make(chan elevevent.ElevatorEvent, 10)
-	commandChannel := make(chan elevcmd.ElevatorCommand, 1)
+	eventChannel := make(chan elevevent.ElevatorEvent, EVENT_CHANNEL_SIZE)
+	commandChannel := make(chan elevcmd.ElevatorCommand, COMMAND_CHANNEL_SIZE)
 
-	elevIO, err := elevio.NewElevatorIO("localhost:15657", elevconsts.N_FLOORS, eventChannel, commandChannel)
+	elevIO, err := elevio.NewElevatorIO(DEFAULT_DRIVER_ADDRESS, elevconsts.N_FLOORS, eventChannel, commandChannel)
 	if err != nil {
 		panic("Error Creating ElevIO Object")
 	}
