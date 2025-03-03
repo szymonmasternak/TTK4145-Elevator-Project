@@ -16,6 +16,10 @@ type ButtonPressEvent struct {
 	Button elevconsts.Button //TODO: Delete ButtonType and replace with Button type?
 }
 
+func (bpe ButtonPressEvent) Wrap() ElevatorEvent {
+	return ElevatorEvent{Value: bpe}
+}
+
 type FloorSensorEvent struct {
 	Floor int
 }
@@ -45,6 +49,6 @@ func (e *ElevatorEvent) EventType() string {
 	case RequestFloorEvent:
 		return "RequestFloorEvent"
 	default:
-		return "Unknown Type"
+		return "UnknownEvent"
 	}
 }
