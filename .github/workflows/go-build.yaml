@@ -1,4 +1,3 @@
-# .github/workflows/go_build.yml
 name: Go Build And Upload Artifacts
 
 on:
@@ -40,3 +39,4 @@ jobs:
         with:
           name: elevator-${{ matrix.platform.name }}
           path: build/elevator-${{ matrix.platform.name }}
+          retention-days: 7
