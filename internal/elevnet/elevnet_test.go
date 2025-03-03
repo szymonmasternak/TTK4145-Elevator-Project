@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 )
 
 func TestStartBroadcastingListening(t *testing.T) {
@@ -18,7 +19,10 @@ func TestStartBroadcastingListening(t *testing.T) {
 	broadcastingPeriod := 10 * time.Millisecond
 	listeningTimeout := broadcastingPeriod * 2
 
-	network := NewElevatorNetwork(&metaData)
+	stateInChannel := make(chan elevstate.ElevatorState, 10)
+	stateOutChannel := make(chan elevstate.ElevatorState, 10)
+
+	network := NewElevatorNetwork(&metaData, stateOutChannel, stateInChannel)
 	network.Broadcast.Start(broadcastingPeriod)
 	defer network.Broadcast.Stop()
 
@@ -70,8 +74,23 @@ func countOccurrences(nl *ElevNetListen, identifier string) int {
 }
 
 func TestAddNodeToList(t *testing.T) {
+	// Create the global stateInChannel
+	stateInChannel := make(chan elevstate.ElevatorState, 10)
+
+	// Initialize ElevNetListen with all required fields:
 	nl := &ElevNetListen{
-		elevatorArray: []ElevatorTime{},
+		ElevatorsFoundOnNetwork: make(chan elevmetadata.ElevMetaData),
+		listening:               false,
+		startStopCh:             make(chan int),
+		conn:                    nil,
+		elevMetaData: &elevmetadata.ElevMetaData{
+			SoftwareVersion: "dummy",
+			IpAddress:       "127.0.0.1",
+			PortNumber:      9999,
+			Identifier:      "testElevator",
+		},
+		elevatorArray:  []ElevatorListObject{},
+		stateInChannel: stateInChannel,
 	}
 
 	// 1st test: add one node to the list
@@ -101,17 +120,15 @@ func TestAddNodeToList(t *testing.T) {
 	}
 
 	// 4th test: removing node
-	time.Sleep(300 * time.Millisecond) //used to make the node't timestamp bigger, simulating disconnection
+	time.Sleep(300 * time.Millisecond) // simulate disconnection
 
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for {
 		nl.AddNodeToList(nodeB)
 		if !elevatorArrayContains(nl, "elevator1") {
-			// if elevator1 is removed, exit the loop.
-			break
+			break // elevator1 removed
 		}
 		if time.Now().After(deadline) {
-			// if elevator1 is still there after 500ms give up
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -123,5 +140,4 @@ func TestAddNodeToList(t *testing.T) {
 	if !elevatorArrayContains(nl, "elevator2") {
 		t.Error("Expected elevator2 to remain in the list")
 	}
-
 }

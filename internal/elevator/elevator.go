@@ -22,8 +22,10 @@ type Elevator struct {
 	IO       *elevio.ElevatorIO
 	State    *elevstate.ElevatorState
 
-	eventChannel   chan elevevent.ElevatorEvent
-	commandChannel chan elevcmd.ElevatorCommand
+	stateInChannel  chan elevstate.ElevatorState
+	stateOutChannel chan elevstate.ElevatorState
+	eventChannel    chan elevevent.ElevatorEvent
+	commandChannel  chan elevcmd.ElevatorCommand
 
 	initialised bool
 	running     bool
@@ -45,23 +47,27 @@ func NewElevator(identifier string) *Elevator {
 
 	eventChannel := make(chan elevevent.ElevatorEvent, 10)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 1)
+	stateInChannel := make(chan elevstate.ElevatorState, 10)
+	stateOutChannel := make(chan elevstate.ElevatorState, 10)
 
 	elevIO, err := elevio.NewElevatorIO("localhost:15657", 4, eventChannel, commandChannel)
 	if err != nil {
 		panic("Error Creating ElevIO Object")
 	}
 
-	elevState := elevstate.NewElevatorState(eventChannel, commandChannel)
+	elevState := elevstate.NewElevatorState(elevatorMetadata, eventChannel, commandChannel, stateOutChannel, stateInChannel)
 
 	return &Elevator{
-		MetaData:       elevatorMetadata,
-		Network:        elevnet.NewElevatorNetwork(elevatorMetadata),
-		IO:             elevIO,
-		State:          elevState,
-		initialised:    true,
-		running:        false,
-		eventChannel:   eventChannel,
-		commandChannel: commandChannel,
+		MetaData:        elevatorMetadata,
+		Network:         elevnet.NewElevatorNetwork(elevatorMetadata, stateOutChannel, stateInChannel),
+		IO:              elevIO,
+		State:           elevState,
+		initialised:     true,
+		running:         false,
+		eventChannel:    eventChannel,
+		commandChannel:  commandChannel,
+		stateInChannel:  stateInChannel,
+		stateOutChannel: stateOutChannel,
 	}
 }
 

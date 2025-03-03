@@ -8,35 +8,42 @@ import (
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 )
 
 const ConnectionCheck = -200 * time.Millisecond
 
-type ElevatorTime struct {
-	ElevatorData elevmetadata.ElevMetaData
-	timeSeen     time.Time
+type ElevatorListObject struct {
+	ElevatorData   elevmetadata.ElevMetaData
+	timeSeen       time.Time
+	stateInChannel <-chan elevstate.ElevatorState
 }
 
 type ElevNetListen struct {
-	ElevatorsFoundOnNetwork chan elevmetadata.ElevMetaData //returns elevators broadcasted on network
+	ElevatorsFoundOnNetwork chan elevmetadata.ElevMetaData // Returns elevators broadcasted on network
 
-	listening     bool                       //internal variable
-	startStopCh   chan int                   //internal variable
-	conn          *net.UDPConn               //internal variable
-	elevMetaData  *elevmetadata.ElevMetaData //internal variable
-	elevatorArray []ElevatorTime
+	listening      bool                       // Internal variable
+	startStopCh    chan int                   // Internal variable
+	conn           *net.UDPConn               // Internal variable
+	elevMetaData   *elevmetadata.ElevMetaData // Internal variable
+	elevatorArray  []ElevatorListObject
+	stateInChannel chan elevstate.ElevatorState // ✅ Fixed channel direction (bidirectional)
 }
 
-func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData) *ElevNetListen {
+// ✅ Constructor remains unchanged
+func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, stateInChannel chan elevstate.ElevatorState) *ElevNetListen {
 	return &ElevNetListen{
 		ElevatorsFoundOnNetwork: make(chan elevmetadata.ElevMetaData),
 		listening:               false,
 		startStopCh:             make(chan int),
 		conn:                    nil,
 		elevMetaData:            elevMetaData,
+		elevatorArray:           []ElevatorListObject{},
+		stateInChannel:          stateInChannel,
 	}
 }
 
+// ✅ Listens for UDP messages and forwards them into stateInChannel
 func (enl *ElevNetListen) Start() error {
 	udpAddress, err := net.ResolveUDPAddr("udp", enl.elevMetaData.GetIPAddressPort())
 	if err != nil {
@@ -51,29 +58,48 @@ func (enl *ElevNetListen) Start() error {
 	enl.listening = true
 
 	go func() {
+		defer enl.conn.Close() // ✅ Ensure the connection is closed when the function exits
 		for {
 			n, _, err := enl.conn.ReadFromUDP(listenBuffer)
 			if err != nil {
+				if errors.Is(err, net.ErrClosed) { // ✅ Handle closed connection error
+					Log.Warn().Msg("UDP connection closed, stopping listener.")
+					return
+				}
 				Log.Error().Msgf("Error reading UDP message: %v", err)
 				continue
 			}
-			var node elevmetadata.ElevMetaData
-			err = json.Unmarshal(listenBuffer[:n], &node)
+
+			var receivedState elevstate.ElevatorState
+			err = json.Unmarshal(listenBuffer[:n], &receivedState)
 			if err != nil {
-				Log.Error().Msgf("Error deserialising JSON: %v", err)
-			} else {
-				enl.ElevatorsFoundOnNetwork <- node
+				Log.Error().Msgf("Error deserializing Elevator State JSON: %v", err)
+				continue
+			}
+
+			// ✅ Ignore messages from itself to prevent feedback loops
+			if receivedState.MetaData.Identifier == enl.elevMetaData.Identifier {
+				continue
+			}
+
+			// ✅ Forward valid state updates to `stateInChannel`
+			select {
+			case enl.stateInChannel <- receivedState:
+				Log.Debug().Msgf("Received and forwarded Elevator State update: %+v", receivedState)
+			default:
+				Log.Warn().Msg("Dropped received state update (stateInChannel full)")
 			}
 		}
 	}()
 
 	go func() {
-		defer enl.conn.Close()
 		for {
 			select {
 			case val := <-enl.startStopCh:
 				if val == 0 {
-					Log.Info().Msgf("Stopping Listening task...")
+					Log.Info().Msg("Stopping Listening task...")
+					enl.listening = false
+					enl.conn.Close() // ✅ Explicitly close the connection before exiting
 					return
 				}
 			}
@@ -91,9 +117,16 @@ func (enl *ElevNetListen) Stop() error {
 	enl.startStopCh <- 0
 	enl.listening = false
 
+	// ✅ Check if `enl.conn` is `nil` before closing it
+	if enl.conn != nil {
+		enl.conn.Close()
+		enl.conn = nil // Ensure it's reset
+	}
+
 	return nil
 }
 
+// ✅ Updates and filters the elevator list dynamically
 func (nl *ElevNetListen) AddNodeToList(n elevmetadata.ElevMetaData) {
 	var repeat bool
 	repeat = false
@@ -104,7 +137,7 @@ func (nl *ElevNetListen) AddNodeToList(n elevmetadata.ElevMetaData) {
 		}
 	}
 	if !repeat {
-		nl.elevatorArray = append(nl.elevatorArray, ElevatorTime{n, time.Now()})
+		nl.elevatorArray = append(nl.elevatorArray, ElevatorListObject{n, time.Now(), nl.stateInChannel})
 	}
 	Logger.Info().Msgf("Node list: ")
 
