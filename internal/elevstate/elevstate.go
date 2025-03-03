@@ -2,6 +2,7 @@ package elevstate
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -51,14 +52,17 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 	return elevatorState
 }
 
-func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) {
-	waitGroup.Add(1) //One Thread
-
+func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) error {
 	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.RequestFloorCommand{}}
 
-	//TODO: Add a timeout event to this for safety
-	for {
-		event := <-es.eventChannel
+	timeout := time.After(500 * time.Millisecond)
+	select {
+	case <-ctx.Done():
+		Log.Warn().Msgf("ElevatorState Start has been signaled to stop")
+		return nil
+	case <-timeout:
+		return errors.New("ElevatorState Start timed out")
+	case event := <-es.eventChannel:
 		req, ok := event.Value.(elevevent.RequestFloorEvent)
 		if ok {
 			es.Floor = req.Floor
@@ -73,6 +77,7 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) {
 		es.Behaviour = elevconsts.Moving
 	}
 
+	waitGroup.Add(1)
 	go func() {
 		defer waitGroup.Done()
 		for {
@@ -112,6 +117,7 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) {
 			}
 		}
 	}()
+	return nil
 }
 
 func (es *ElevatorState) Print() {

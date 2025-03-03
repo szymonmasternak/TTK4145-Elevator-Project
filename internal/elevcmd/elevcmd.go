@@ -63,6 +63,6 @@ func (e *ElevatorCommand) CommandType() string {
 	case RequestFloorCommand:
 		return "RequestFloorCommand"
 	default:
-		return "Unknown Command"
+		return "UnknownCommand"
 	}
 }

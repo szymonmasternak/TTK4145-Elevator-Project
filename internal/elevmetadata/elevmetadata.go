@@ -20,7 +20,7 @@ func (elevMetaData *ElevMetaData) String() string {
 	jsonData, err := json.Marshal(elevMetaData)
 
 	if err != nil {
-		Log.Error().Msg("Error Serialing ElevMetaData Object to JSON")
+		Log.Error().Msg("Error Serialising ElevMetaData Object to JSON")
 		return ""
 	}
 	return string(jsonData)

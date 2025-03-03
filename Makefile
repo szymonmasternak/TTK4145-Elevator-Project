@@ -27,4 +27,4 @@ run:
 
 test:
 	@echo "[TEST] Running Tests"
-	@go test ./...
+	@go test ./... -timeout 60s
