@@ -57,8 +57,24 @@ The structure of this project is as follows:
     - `elevutils`: Provides functions that could not be placed elsewhere.
     - `logger`: Contains logging functionality and tests.
 
-As of currently there are
+## Channels
 
-![PlantUML Diagram](https://www.plantuml.com/plantuml/svg/SoWkIImgAStDuNBAJrBGjLDmpCbCJbMmKiX8pSd9vt98pKi1IW80)
+There are a number of channels active.
 
-![DrawIO Diagram](/docs/diagrams/diagram.drawio.svg)
+### Internal channels between elevio and elevdriver
+
+Data gets sent from the `elevdriver` to the `elevio` module.
+The `elevdriver` polls all the buttons, floor sensor, obstruction switch as well as the stop switch and sends the events to the `elevio` module.
+
+![Elevdriver and ElevIO driver channels](https://www.plantuml.com/plantuml/svg/VS_1JeH030RWUv-YH_UmBx07inensHC942_gOM2gJ3BJag6G-FOEJC34YCUstz-qrr5Dr2buyFIXg8BHVVQAraNgr0a3l9AdsOcDRgRuZcR4f-hsKbJRO6tTobocTKfhfsuUcW8WMpoVxvF12tQzOIR_EAaAl_6TVWrqmLmMCx6UZYBFNYJk2VUFh5M67ROY_b2MxQZn5mL88i7yGRAqdBKbThnyI_dW37zsImY6xP-9BjWJN8dj5Fmt)
+
+### Channels between elevio and elevstate
+
+The `elevIO` module takes different events and maps them to an `elevevent` structure which gets sent over to the `elevstate` module.
+Inside the `elevstate` module, these events are processed accordingly according to the state diagrams.
+
+If action is needed based on any events, then a command is sent through the command channel back to the `elevIO` module, encompassed in an `elevcmd` structure. This command structure is processed and an appropriate function executed on the `elevio` side. For example sending `DoorOpenCommand{}` command over the command channel will open the door.
+
+![PlantUML Diagram](https://www.plantuml.com/plantuml/svg/PSw_JiCm40RmtKznwaI7la07r0YiAbAJICIm0CF9Fb8B_wdi2n92l3l1mIoL9_zydxyxPCR4itV2qHi3HqXsEZCOcqYpZK682-ftd0Wsqj47SamR-180pxHSTGoPyojWXhkX7rLr6ukrGmLFZ0OP2tTIDVKX41VhvNyuCp8L75MZPEMPhLkh7bLx6d_PnMcYLEmq78_oeSuk9t1n-IHxLLbxyxThrpNzlVWMeXrWjxjTcs0F9GZwZ26GUmat_7cXHUkNMr46IsH9xa57xp6OwyJQjXK72cRsxWS0)
+
+In order to be able to process these commands and events, threads have to be run accordingly on both the `elevIO` as well as `elevstate` modules.

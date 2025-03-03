@@ -1,12 +1,10 @@
-name: Go Build And Test 
+name: Go Test
 
 on:
-  push:
-    branches:
-      - '*'
+  pull_request:
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code from Repository
@@ -19,14 +17,5 @@ jobs:
         with:
           go-version: '1.23.4'
 
-      - name: Build Project
-        run: make build
-      
       - name: Test Project
         run: make test
-      
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: elevator
-          path: build/elevator
