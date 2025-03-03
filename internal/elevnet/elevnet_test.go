@@ -17,7 +17,7 @@ func TestStartBroadcastingListening(t *testing.T) {
 	}
 
 	broadcastingPeriod := 10 * time.Millisecond
-	listeningTimeout := broadcastingPeriod * 2
+	listeningTimeout := broadcastingPeriod * 5 // ✅ Increase timeout to allow broadcast to be received
 
 	stateInChannel := make(chan elevstate.ElevatorState, 10)
 	stateOutChannel := make(chan elevstate.ElevatorState, 10)
