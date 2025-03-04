@@ -10,11 +10,11 @@ type Dirn int
 func (d Dirn) String() string {
 	switch d {
 	case Up:
-		return "Up"
+		return "up"
 	case Down:
-		return "Down"
+		return "down"
 	case Stop:
-		return "Stop"
+		return "stop"
 	default:
 		return "Undefined"
 	}
@@ -58,11 +58,11 @@ const (
 func (eb ElevatorBehaviour) String() string {
 	switch eb {
 	case Idle:
-		return "EB_Idle"
+		return "idle"
 	case DoorOpen:
-		return "EB_DoorOpen"
+		return "doorOpen"
 	case Moving:
-		return "EB_Moving"
+		return "moving"
 	default:
 		return "EB_UNDEFINED"
 	}
