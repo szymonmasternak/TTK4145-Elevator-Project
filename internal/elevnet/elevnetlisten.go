@@ -11,11 +11,14 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 )
 
-const ConnectionCheck = -200 * time.Millisecond
+const ConnectionCheck = 200 * time.Millisecond
+const WaitForReconnection = 500 * time.Millisecond
 
 type ElevatorListObject struct {
-	msg      ElevatorMessage
-	timeSeen time.Time
+	msg              ElevatorMessage
+	timeSeen         time.Time
+	disconnected     bool
+	timeDisconnected time.Time
 }
 
 type ElevNetListen struct {
@@ -105,27 +108,38 @@ func (enl *ElevNetListen) Stop() error {
 }
 
 func (nl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
-	var repeat bool
-	repeat = false
+	var elavatorFound bool
+	elavatorFound = false
 	for i := 0; i < len(nl.elevatorArray); i++ {
 		if msg.ElevatorData.Identifier == nl.elevatorArray[i].msg.ElevatorData.Identifier {
-			repeat = true
+			elavatorFound = true
 			nl.elevatorArray[i].timeSeen = time.Now()
+			nl.elevatorArray[i].disconnected = false
+			break
 		}
 	}
-	if !repeat {
-		nl.elevatorArray = append(nl.elevatorArray, ElevatorListObject{msg, time.Now()})
+	if !elavatorFound {
+		nl.elevatorArray = append(nl.elevatorArray, ElevatorListObject{msg, time.Now(), false, time.Time{}})
 	}
 	Logger.Info().Msgf("Node list: ")
 
 	filtered := nl.elevatorArray[:0] // Keep only valid elements
 
 	for i := 0; i < len(nl.elevatorArray); i++ {
-		if nl.elevatorArray[i].timeSeen.After(time.Now().Add(ConnectionCheck)) {
+		if time.Now().Before(nl.elevatorArray[i].timeSeen.Add(ConnectionCheck)) {
 			filtered = append(filtered, nl.elevatorArray[i]) // Keep only non-stale nodes
 			fmt.Printf("%v, ", nl.elevatorArray[i].msg.ElevatorData.Identifier)
 		} else {
-			Logger.Info().Msg("Node timed out, removing from the list")
+			nl.elevatorArray[i].disconnected = true
+			if nl.elevatorArray[i].timeDisconnected.IsZero() {
+				nl.elevatorArray[i].timeDisconnected = time.Now()
+			}
+			Logger.Info().Msg("Elevator disconnected, waiting for reconnect")
+			if time.Now().Before(nl.elevatorArray[i].timeDisconnected.Add(WaitForReconnection)) {
+				filtered = append(filtered, nl.elevatorArray[i])
+			} else {
+				Logger.Info().Msg("Elevator didn't reconnect in time, removing from list")
+			}
 		}
 	}
 	fmt.Printf("\n")
