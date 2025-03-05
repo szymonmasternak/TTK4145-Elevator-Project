@@ -1,6 +1,9 @@
 package elevio
 
 import (
+	"context"
+	"sync"
+
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevevent"
@@ -45,69 +48,81 @@ func NewElevatorIO(ipAddress string, numFloors int, eventChannel chan<- eleveven
 		requestedFloor: false,
 	}
 
-	go driver.PollButtons(elevio.channelButton)
-	go driver.PollFloorSensor(elevio.channelFloor)
-	go driver.PollStopButton(elevio.channelStop)
-	go driver.PollObstructionSwitch(elevio.channelObstr)
+	return &elevio, nil
+}
+
+func (eio *ElevatorIO) Start(ctx context.Context, waitGroup *sync.WaitGroup) {
+	waitGroup.Add(2) //Two threads
+
+	go eio.driver.PollButtons(eio.channelButton)
+	go eio.driver.PollFloorSensor(eio.channelFloor)
+	go eio.driver.PollStopButton(eio.channelStop)
+	go eio.driver.PollObstructionSwitch(eio.channelObstr)
 
 	go func() {
+		defer waitGroup.Done()
 		for {
 			select {
-			case buttonEvent := <-elevio.channelButton:
+			case <-ctx.Done():
+				Log.Warn().Msgf("ElevatorIO driver channel Go routine has been signaled to stop")
+				return
+			case buttonEvent := <-eio.channelButton:
 				Log.Debug().Msgf("Received channelButton")
 				floor := buttonEvent.Floor
 				button := elevconsts.Button(buttonEvent.Button)
-				elevio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floor, Button: button}}
-			case floor := <-elevio.channelFloor:
+				eio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floor, Button: button}}
+			case floor := <-eio.channelFloor:
 				Log.Debug().Msgf("Received channelFloor %v", floor)
-				elevio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.FloorSensorEvent{Floor: floor}}
-			case val := <-elevio.channelStop:
+				eio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.FloorSensorEvent{Floor: floor}}
+			case val := <-eio.channelStop:
 				Log.Debug().Msgf("Received channelStop")
-				elevio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.StopButtonEvent{Value: val}}
-			case val := <-elevio.channelObstr:
+				eio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.StopButtonEvent{Value: val}}
+			case val := <-eio.channelObstr:
 				Log.Debug().Msgf("Received channelObstr")
-				elevio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ObstructionEvent{Value: val}}
+				eio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ObstructionEvent{Value: val}}
 			default:
-				if elevio.requestedFloor {
+				if eio.requestedFloor {
 					Log.Debug().Msgf("Received requestedFloor")
-					elevio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.RequestFloorEvent{Floor: elevio.driver.GetFloor()}}
-					elevio.requestedFloor = false
+					eio.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.RequestFloorEvent{Floor: eio.driver.GetFloor()}}
+					eio.requestedFloor = false
 				}
 			}
 		}
 	}()
 
 	go func() {
+		defer waitGroup.Done()
 		for {
 			select {
-			case command := <-elevio.commandChannel:
+			case <-ctx.Done():
+				Log.Warn().Msgf("ElevatorIO Receive Command Channel Go routine has been signaled to stop")
+				return
+			case command := <-eio.commandChannel:
 				Log.Debug().Msgf("Received command %v", command.CommandType())
 				switch cmd := command.Value.(type) {
 				case elevcmd.MotorDirCommand:
-					elevio.driver.SetMotorDirection(MotorDirection(cmd.Dir))
+					eio.driver.SetMotorDirection(MotorDirection(cmd.Dir))
 				case elevcmd.ButtonLightArrayCommand:
 					for i := 0; i < len(cmd.Array); i++ {
 						element := cmd.Array[i]
-						elevio.driver.SetButtonLamp(ButtonType(element.Button), element.Floor, element.Value)
+						eio.driver.SetButtonLamp(ButtonType(element.Button), element.Floor, element.Value)
 					}
 				case elevcmd.ButtonLightCommand:
-					elevio.driver.SetButtonLamp(ButtonType(cmd.Button), cmd.Floor, cmd.Value)
+					eio.driver.SetButtonLamp(ButtonType(cmd.Button), cmd.Floor, cmd.Value)
 				case elevcmd.FloorIndicatorCommand:
-					elevio.driver.SetFloorIndicator(cmd.Floor)
+					eio.driver.SetFloorIndicator(cmd.Floor)
 				case elevcmd.DoorOpenCommand:
-					elevio.driver.SetDoorOpenLamp(true)
+					eio.driver.SetDoorOpenLamp(true)
 				case elevcmd.DoorCloseCommand:
-					elevio.driver.SetDoorOpenLamp(false)
+					eio.driver.SetDoorOpenLamp(false)
 				case elevcmd.StopLampCommand:
-					elevio.driver.SetStopLamp(cmd.Value)
+					eio.driver.SetStopLamp(cmd.Value)
 				case elevcmd.RequestFloorCommand:
-					elevio.requestedFloor = true
+					eio.requestedFloor = true
 				default:
 					Log.Error().Msgf("Unknown command %v", cmd)
 				}
 			}
 		}
 	}()
-
-	return &elevio, nil
 }

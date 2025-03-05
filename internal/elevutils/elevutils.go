@@ -17,12 +17,19 @@ func GetGitHash() string {
 	return gitHash
 }
 
-func ProcessCmdArgs() string {
+func ProcessCmdArgs() (string, uint16, bool) {
 	help := flag.Bool("help", false, "Show Help Window")
 	version := flag.Bool("version", false, "Show Version")
 	identifier := flag.String("id", "", "Set the identifier of the elevator. Defaults to random string")
+	portNumber := flag.Uint64("port", 9999, "Set the port number of the elevator. Defaults to 9999")
+	clearUpDownOnArrival := flag.Bool("clearupdownonarrival", false, "Clear the Up and Down requests at floor arrival. Defaults to false")
 
 	flag.Parse()
+
+	if *portNumber > 65535 || *portNumber < 1 {
+		fmt.Println("Port number must be between 1 and 65535")
+		os.Exit(1)
+	}
 
 	if *version {
 		fmt.Println("Version:", GetGitHash())
@@ -46,7 +53,7 @@ func ProcessCmdArgs() string {
 		os.Exit(0)
 	}
 
-	return *identifier
+	return *identifier, uint16(*portNumber), *clearUpDownOnArrival
 }
 
 var localIP string //local string, not to be accessed anywhere
