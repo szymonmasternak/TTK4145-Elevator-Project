@@ -45,7 +45,7 @@ The structure of this project is as follows:
 - `Makefile` encompasses the build process
 - `build/` directory encompasses binaries built during the build process
 - `cmd/` houses the `main.go` files for different binaries.
-- `internal/` directory contains different the different modules such as
+- `internal/` directory contains different modules such as;
     - `elevator`: contains the root struct of the elevator and associated functions
     - `elevcmd`: Defines the elevator `command` type
     - `elevconsts`: Holds constant definitions used throughout the project
