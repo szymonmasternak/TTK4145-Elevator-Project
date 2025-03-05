@@ -8,10 +8,28 @@ import (
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 )
 
+//a reconection attempt may be necessary
+
 var Log = logger.GetLogger()
+
+type ElevatorMessage struct {
+	ElevatorData  elevmetadata.ElevMetaData
+	ElevatorState elevstate.ElevatorState
+}
+
+func MakeElevatorMessage(
+	meta *elevmetadata.ElevMetaData,
+	state *elevstate.ElevatorState,
+) ElevatorMessage {
+	return ElevatorMessage{
+		ElevatorData:  *meta,
+		ElevatorState: *state,
+	}
+}
 
 type ElevNetBroadcast struct {
 	broadcasting       bool                       //internal variable
@@ -19,13 +37,20 @@ type ElevNetBroadcast struct {
 	conn               *net.UDPConn               //internal variable
 	broadCastingPeriod time.Duration              //internal variable
 	metaData           *elevmetadata.ElevMetaData //internal variable
+	elevatorState      *elevstate.ElevatorState
+
+	stateInChannel  <-chan elevstate.ElevatorState
+	stateOutChannel <-chan elevstate.ElevatorState
 }
 
-func NewElevNetBroadcast(metaData *elevmetadata.ElevMetaData) *ElevNetBroadcast {
+func NewElevNetBroadcast(metaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState) *ElevNetBroadcast {
 	return &ElevNetBroadcast{
-		broadcasting: false,
-		startStopCh:  make(chan int),
-		metaData:     metaData,
+		broadcasting:    false,
+		startStopCh:     make(chan int),
+		metaData:        metaData,
+		elevatorState:   elevatorState,
+		stateInChannel:  stateInChannel,
+		stateOutChannel: stateOutChannel,
 	}
 }
 func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
@@ -54,23 +79,38 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 		defer enb.conn.Close()
 		enb.broadcasting = true
 
+		var latestState elevstate.ElevatorState
+
 		for {
 			select {
+			case updatedState, ok := <-enb.stateOutChannel:
+				if !ok {
+					return
+				}
+				// Just store the updated state; we’ll send it on the next ticker event.
+				latestState = updatedState
+
 			case <-timeTicker.C:
-				jsonData, err := json.Marshal(enb.metaData)
+				// On each tick, send out the *most recent* state we’ve cached.
+				msg := ElevatorMessage{
+					ElevatorData:  *enb.metaData,
+					ElevatorState: latestState,
+				}
+				jsonData, err := json.Marshal(msg)
 				if err != nil {
 					Log.Error().Msgf("Error marshalling JSON: %v", err)
+					continue
 				}
 				_, err = enb.conn.Write(jsonData)
 				if err != nil {
 					Log.Error().Msgf("Error writing to UDP Socket: %v", err)
+					continue
 				}
-
 				Log.Debug().Msgf("Sent Packet: %v", string(jsonData))
 
 			case val := <-enb.startStopCh:
 				if val == 0 {
-					Log.Info().Msgf("Stopping Broadcasting task...")
+					Log.Info().Msgf("Stopping Broadcasting...")
 					return
 				}
 			}

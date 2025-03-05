@@ -2,6 +2,7 @@ package elevnet
 
 import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 )
 
@@ -16,9 +17,9 @@ type ElevatorNetwork struct {
 	Listen    *ElevNetListen
 }
 
-func NewElevatorNetwork(elevMeta *elevmetadata.ElevMetaData) *ElevatorNetwork {
+func NewElevatorNetwork(elevMeta *elevmetadata.ElevMetaData, elevState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState) *ElevatorNetwork {
 	return &ElevatorNetwork{
-		Broadcast: NewElevNetBroadcast(elevMeta),
-		Listen:    NewElevNetListen(elevMeta),
+		Broadcast: NewElevNetBroadcast(elevMeta, elevState, stateInChannel, stateOutChannel),
+		Listen:    NewElevNetListen(elevMeta, elevState, stateInChannel, stateOutChannel),
 	}
 }
