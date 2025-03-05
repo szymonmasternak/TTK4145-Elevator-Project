@@ -29,9 +29,11 @@ type ElevatorState struct {
 	doorOpenTime        time.Time
 	eventChannel        <-chan elevevent.ElevatorEvent
 	commandChannel      chan<- elevcmd.ElevatorCommand
+	stateInChannel      <-chan ElevatorState
+	stateOutChannel     chan<- ElevatorState
 }
 
-func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool) *ElevatorState {
+func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateInChannel <-chan ElevatorState, stateOutChannel chan<- ElevatorState) *ElevatorState {
 	clearRequestVariant := elevconsts.InDirn
 	if clearUpDownOnArrival {
 		clearRequestVariant = elevconsts.All
@@ -45,6 +47,8 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 		doorOpenDuration:    time.Second * 3,
 		eventChannel:        eventChannel,
 		commandChannel:      commandChannel,
+		stateInChannel:      stateInChannel,
+		stateOutChannel:     stateOutChannel,
 		stopButton:          false,
 		obstructionSensor:   false,
 		doorOpenTime:        time.Time{}, //Returns zero value, since we dont know when it was last open
@@ -253,4 +257,22 @@ func (es *ElevatorState) handleStopButton(stopButtonState bool) {
 
 func (es *ElevatorState) handleObstruction(obstructionState bool) {
 	es.obstructionSensor = obstructionState
+}
+
+func (es *ElevatorState) BroadcastState() {
+	es.stateOutChannel <- *es
+}
+
+func (es *ElevatorState) UpdateState(newState ElevatorState) {
+	// If concurrency is a concern, consider adding a mutex lock/unlock here.
+	es.Floor = newState.Floor
+	es.Dirn = newState.Dirn
+	es.Requests = newState.Requests
+	es.Behaviour = newState.Behaviour
+
+	// If you need to update other internal fields, do so here.
+	// For example, you might want to update doorOpenTime, or sensor flags if applicable.
+
+	// Optionally, update the button lights to reflect the new state.
+	es.setAllLightsSequence()
 }

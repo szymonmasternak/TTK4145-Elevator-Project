@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 )
 
 func TestStartBroadcastingListening(t *testing.T) {
@@ -15,10 +16,17 @@ func TestStartBroadcastingListening(t *testing.T) {
 		Identifier:      "uwvvblrtct",
 	}
 
+	state := elevstate.ElevatorState{}
+
+	msg := MakeElevatorMessage(&metaData, &state)
+
+	stateInChannel := make(chan elevstate.ElevatorState)
+	stateOutChannel := make(chan elevstate.ElevatorState)
+
 	broadcastingPeriod := 10 * time.Millisecond
 	listeningTimeout := broadcastingPeriod * 2
 
-	network := NewElevatorNetwork(&metaData)
+	network := NewElevatorNetwork(&metaData, &state, stateInChannel, stateOutChannel)
 	network.Broadcast.Start(broadcastingPeriod)
 	defer network.Broadcast.Stop()
 
@@ -30,8 +38,8 @@ func TestStartBroadcastingListening(t *testing.T) {
 
 	select {
 	case nodeFound := <-network.Listen.ElevatorsFoundOnNetwork:
-		if nodeFound != metaData {
-			t.Errorf("Wrong Elevator found on network = %s, expected %s", nodeFound.String(), metaData.String())
+		if nodeFound != msg {
+			t.Errorf("Wrong Elevator found on network = %s, expected %s", nodeFound.ElevatorData.String(), metaData.String())
 		}
 		timerticker.Stop()
 		return
@@ -43,7 +51,7 @@ func TestStartBroadcastingListening(t *testing.T) {
 
 func elevatorArrayContains(nl *ElevNetListen, identifier string) bool {
 	for _, i := range nl.elevatorArray {
-		if i.ElevatorData.Identifier == identifier {
+		if i.msg.ElevatorData.Identifier == identifier {
 			return true
 		}
 	}
@@ -52,7 +60,7 @@ func elevatorArrayContains(nl *ElevNetListen, identifier string) bool {
 
 func getTimestampFor(nl *ElevNetListen, identifier string) time.Time {
 	for _, i := range nl.elevatorArray {
-		if i.ElevatorData.Identifier == identifier {
+		if i.msg.ElevatorData.Identifier == identifier {
 			return i.timeSeen
 		}
 	}
@@ -62,7 +70,7 @@ func getTimestampFor(nl *ElevNetListen, identifier string) time.Time {
 func countOccurrences(nl *ElevNetListen, identifier string) int {
 	count := 0
 	for _, i := range nl.elevatorArray {
-		if i.ElevatorData.Identifier == identifier {
+		if i.msg.ElevatorData.Identifier == identifier {
 			count++
 		}
 	}
@@ -71,12 +79,14 @@ func countOccurrences(nl *ElevNetListen, identifier string) int {
 
 func TestAddNodeToList(t *testing.T) {
 	nl := &ElevNetListen{
-		elevatorArray: []ElevatorTime{},
+		elevatorArray: []ElevatorListObject{},
 	}
 
 	// 1st test: add one node to the list
-	nodeA := elevmetadata.ElevMetaData{"sdijfoisj", "0.0.0.0", 9999, "elevator1"}
-	nl.AddNodeToList(nodeA)
+	node1data := elevmetadata.ElevMetaData{"sdijfoisj", "0.0.0.0", 9999, "elevator1"}
+	node1state := elevstate.ElevatorState{}
+	msg1 := MakeElevatorMessage(&node1data, &node1state)
+	nl.AddNodeToList(msg1)
 	if !elevatorArrayContains(nl, "elevator1") {
 		t.Error("Expected elevator1 to be in the list")
 	}
@@ -84,7 +94,7 @@ func TestAddNodeToList(t *testing.T) {
 	// 2nd test: update timestamp correctly
 	oldTimestamp := getTimestampFor(nl, "elevator1")
 	time.Sleep(50 * time.Millisecond)
-	nl.AddNodeToList(nodeA)
+	nl.AddNodeToList(msg1)
 	newTimestamp := getTimestampFor(nl, "elevator1")
 	if !newTimestamp.After(oldTimestamp) {
 		t.Error("Expected elevator1's timestamp to be updated")
@@ -94,8 +104,10 @@ func TestAddNodeToList(t *testing.T) {
 	}
 
 	// 3rd test: add second node
-	nodeB := elevmetadata.ElevMetaData{"sodicmxzxj", "0.0.0.0", 9999, "elevator2"}
-	nl.AddNodeToList(nodeB)
+	node2data := elevmetadata.ElevMetaData{"sodicmxzxj", "0.0.0.0", 9999, "elevator2"}
+	node2state := elevstate.ElevatorState{}
+	msg2 := MakeElevatorMessage(&node2data, &node2state)
+	nl.AddNodeToList(msg2)
 	if !elevatorArrayContains(nl, "elevator1") || !elevatorArrayContains(nl, "elevator2") {
 		t.Error("Expected both elevator1 and elevator2 to be in the list")
 	}
@@ -105,7 +117,7 @@ func TestAddNodeToList(t *testing.T) {
 
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for {
-		nl.AddNodeToList(nodeB)
+		nl.AddNodeToList(msg2)
 		if !elevatorArrayContains(nl, "elevator1") {
 			// if elevator1 is removed, exit the loop.
 			break

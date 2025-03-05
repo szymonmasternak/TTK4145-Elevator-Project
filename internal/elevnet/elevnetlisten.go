@@ -8,32 +8,39 @@ import (
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 )
 
 const ConnectionCheck = -200 * time.Millisecond
 
-type ElevatorTime struct {
-	ElevatorData elevmetadata.ElevMetaData
-	timeSeen     time.Time
+type ElevatorListObject struct {
+	msg      ElevatorMessage
+	timeSeen time.Time
 }
 
 type ElevNetListen struct {
-	ElevatorsFoundOnNetwork chan elevmetadata.ElevMetaData //returns elevators broadcasted on network
+	ElevatorsFoundOnNetwork chan ElevatorMessage //returns elevators broadcasted on network
+	stateInChannel          <-chan elevstate.ElevatorState
+	stateOutChannel         <-chan elevstate.ElevatorState
 
 	listening     bool                       //internal variable
 	startStopCh   chan int                   //internal variable
 	conn          *net.UDPConn               //internal variable
 	elevMetaData  *elevmetadata.ElevMetaData //internal variable
-	elevatorArray []ElevatorTime
+	elevatorArray []ElevatorListObject
+	ElevatorState *elevstate.ElevatorState
 }
 
-func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData) *ElevNetListen {
+func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState) *ElevNetListen {
 	return &ElevNetListen{
-		ElevatorsFoundOnNetwork: make(chan elevmetadata.ElevMetaData),
+		ElevatorsFoundOnNetwork: make(chan ElevatorMessage),
+		stateInChannel:          stateInChannel,
+		stateOutChannel:         stateOutChannel,
 		listening:               false,
 		startStopCh:             make(chan int),
 		conn:                    nil,
 		elevMetaData:            elevMetaData,
+		ElevatorState:           elevatorState,
 	}
 }
 
@@ -57,12 +64,15 @@ func (enl *ElevNetListen) Start() error {
 				Log.Error().Msgf("Error reading UDP message: %v", err)
 				continue
 			}
-			var node elevmetadata.ElevMetaData
-			err = json.Unmarshal(listenBuffer[:n], &node)
+			// var node elevmetadata.ElevMetaData
+			// err = json.Unmarshal(listenBuffer[:n], &node)
+			var msg ElevatorMessage
+			err = json.Unmarshal(listenBuffer[:n], &msg)
+
 			if err != nil {
 				Log.Error().Msgf("Error deserialising JSON: %v", err)
 			} else {
-				enl.ElevatorsFoundOnNetwork <- node
+				enl.ElevatorsFoundOnNetwork <- msg
 			}
 		}
 	}()
@@ -94,17 +104,17 @@ func (enl *ElevNetListen) Stop() error {
 	return nil
 }
 
-func (nl *ElevNetListen) AddNodeToList(n elevmetadata.ElevMetaData) {
+func (nl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
 	var repeat bool
 	repeat = false
 	for i := 0; i < len(nl.elevatorArray); i++ {
-		if n.Identifier == nl.elevatorArray[i].ElevatorData.Identifier {
+		if msg.ElevatorData.Identifier == nl.elevatorArray[i].msg.ElevatorData.Identifier {
 			repeat = true
 			nl.elevatorArray[i].timeSeen = time.Now()
 		}
 	}
 	if !repeat {
-		nl.elevatorArray = append(nl.elevatorArray, ElevatorTime{n, time.Now()})
+		nl.elevatorArray = append(nl.elevatorArray, ElevatorListObject{msg, time.Now()})
 	}
 	Logger.Info().Msgf("Node list: ")
 
@@ -113,7 +123,7 @@ func (nl *ElevNetListen) AddNodeToList(n elevmetadata.ElevMetaData) {
 	for i := 0; i < len(nl.elevatorArray); i++ {
 		if nl.elevatorArray[i].timeSeen.After(time.Now().Add(ConnectionCheck)) {
 			filtered = append(filtered, nl.elevatorArray[i]) // Keep only non-stale nodes
-			fmt.Printf("%v, ", nl.elevatorArray[i].ElevatorData.Identifier)
+			fmt.Printf("%v, ", nl.elevatorArray[i].msg.ElevatorData.Identifier)
 		} else {
 			Logger.Info().Msg("Node timed out, removing from the list")
 		}
