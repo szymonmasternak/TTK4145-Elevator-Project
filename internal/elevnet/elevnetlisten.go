@@ -5,26 +5,45 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 )
 
-type ElevNetListen struct {
-	ElevatorsFoundOnNetwork chan elevmetadata.ElevMetaData //returns elevators broadcasted on network
+const ConnectionCheck = 200 * time.Millisecond
+const WaitForReconnection = 500 * time.Millisecond
 
-	listening    bool                       //internal variable
-	startStopCh  chan int                   //internal variable
-	conn         *net.UDPConn               //internal variable
-	elevMetaData *elevmetadata.ElevMetaData //internal variable
+type ElevatorListObject struct {
+	msg              ElevatorMessage
+	timeSeen         time.Time
+	disconnected     bool
+	timeDisconnected time.Time
 }
 
-func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData) *ElevNetListen {
+type ElevNetListen struct {
+	ElevatorsFoundOnNetwork chan ElevatorMessage //returns elevators broadcasted on network
+	stateInChannel          <-chan elevstate.ElevatorState
+	stateOutChannel         <-chan elevstate.ElevatorState
+
+	listening     bool                       //internal variable
+	startStopCh   chan int                   //internal variable
+	conn          *net.UDPConn               //internal variable
+	elevMetaData  *elevmetadata.ElevMetaData //internal variable
+	elevatorArray []ElevatorListObject
+	ElevatorState *elevstate.ElevatorState
+}
+
+func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState) *ElevNetListen {
 	return &ElevNetListen{
-		ElevatorsFoundOnNetwork: make(chan elevmetadata.ElevMetaData),
+		ElevatorsFoundOnNetwork: make(chan ElevatorMessage),
+		stateInChannel:          stateInChannel,
+		stateOutChannel:         stateOutChannel,
 		listening:               false,
 		startStopCh:             make(chan int),
 		conn:                    nil,
 		elevMetaData:            elevMetaData,
+		ElevatorState:           elevatorState,
 	}
 }
 
@@ -48,12 +67,15 @@ func (enl *ElevNetListen) Start() error {
 				Log.Error().Msgf("Error reading UDP message: %v", err)
 				continue
 			}
-			var node elevmetadata.ElevMetaData
-			err = json.Unmarshal(listenBuffer[:n], &node)
+			// var node elevmetadata.ElevMetaData
+			// err = json.Unmarshal(listenBuffer[:n], &node)
+			var msg ElevatorMessage
+			err = json.Unmarshal(listenBuffer[:n], &msg)
+
 			if err != nil {
 				Log.Error().Msgf("Error deserialising JSON: %v", err)
 			} else {
-				enl.ElevatorsFoundOnNetwork <- node
+				enl.ElevatorsFoundOnNetwork <- msg
 			}
 		}
 	}()
@@ -83,4 +105,44 @@ func (enl *ElevNetListen) Stop() error {
 	enl.listening = false
 
 	return nil
+}
+
+func (nl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
+	var elavatorFound bool
+	elavatorFound = false
+	for i := 0; i < len(nl.elevatorArray); i++ {
+		if msg.ElevatorData.Identifier == nl.elevatorArray[i].msg.ElevatorData.Identifier {
+			elavatorFound = true
+			nl.elevatorArray[i].timeSeen = time.Now()
+			nl.elevatorArray[i].disconnected = false
+			nl.elevatorArray[i].msg.ElevatorState = msg.ElevatorState
+			break
+		}
+	}
+	if !elavatorFound {
+		nl.elevatorArray = append(nl.elevatorArray, ElevatorListObject{msg, time.Now(), false, time.Time{}})
+	}
+	Logger.Info().Msgf("Node list: ")
+
+	filtered := nl.elevatorArray[:0] // Keep only valid elements
+
+	for i := 0; i < len(nl.elevatorArray); i++ {
+		if time.Now().Before(nl.elevatorArray[i].timeSeen.Add(ConnectionCheck)) {
+			filtered = append(filtered, nl.elevatorArray[i]) // Keep only non-stale nodes
+			fmt.Printf("%v, ", nl.elevatorArray[i].msg.ElevatorData.Identifier)
+		} else {
+			nl.elevatorArray[i].disconnected = true
+			if nl.elevatorArray[i].timeDisconnected.IsZero() {
+				nl.elevatorArray[i].timeDisconnected = time.Now()
+			}
+			Logger.Info().Msg("Elevator disconnected, waiting for reconnect")
+			if time.Now().Before(nl.elevatorArray[i].timeDisconnected.Add(WaitForReconnection)) {
+				filtered = append(filtered, nl.elevatorArray[i])
+			} else {
+				Logger.Info().Msg("Elevator didn't reconnect in time, removing from list")
+			}
+		}
+	}
+	fmt.Printf("\n")
+	nl.elevatorArray = filtered // Update original slice
 }

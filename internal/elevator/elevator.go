@@ -33,8 +33,10 @@ type Elevator struct {
 	IO       *elevio.ElevatorIO
 	State    *elevstate.ElevatorState
 
-	eventChannel   chan elevevent.ElevatorEvent
-	commandChannel chan elevcmd.ElevatorCommand
+	eventChannel    chan elevevent.ElevatorEvent
+	commandChannel  chan elevcmd.ElevatorCommand
+	stateInChannel  chan elevstate.ElevatorState
+	stateOutChannel chan elevstate.ElevatorState
 
 	initialised bool //set to true if initialised via NewElevator Function
 	running     bool
@@ -59,17 +61,19 @@ func NewElevator(identifier string, portNumber uint16, clearUpDownOnArrival bool
 
 	eventChannel := make(chan elevevent.ElevatorEvent, EVENT_CHANNEL_SIZE)
 	commandChannel := make(chan elevcmd.ElevatorCommand, COMMAND_CHANNEL_SIZE)
+	stateInChannel := make(chan elevstate.ElevatorState, 10)
+	stateOutChannel := make(chan elevstate.ElevatorState, 10)
 
 	elevIO, err := elevio.NewElevatorIO(DEFAULT_DRIVER_ADDRESS, elevconsts.N_FLOORS, eventChannel, commandChannel)
 	if err != nil {
 		panic("Error Creating ElevIO Object")
 	}
 
-	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	return &Elevator{
 		MetaData:       elevatorMetadata,
-		Network:        elevnet.NewElevatorNetwork(elevatorMetadata),
+		Network:        elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateInChannel, stateOutChannel),
 		IO:             elevIO,
 		State:          elevState,
 		initialised:    true,
