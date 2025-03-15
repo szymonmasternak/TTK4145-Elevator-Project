@@ -115,6 +115,7 @@ func (nl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
 			elavatorFound = true
 			nl.elevatorArray[i].timeSeen = time.Now()
 			nl.elevatorArray[i].disconnected = false
+			nl.elevatorArray[i].msg.ElevatorState = msg.ElevatorState
 			break
 		}
 	}
