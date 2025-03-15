@@ -67,6 +67,9 @@ func TestElevatorStateInitialisation(t *testing.T) {
 	_ = logger.GetLoggerConfigured(zerolog.Disabled)
 	eventChannel := make(chan elevevent.ElevatorEvent, 10)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 1)
+	stateInChannel := make(chan ElevatorState, 10)
+	stateOutChannel := make(chan ElevatorState, 10)
+
 	clearUpDownOnArrival := false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -74,7 +77,7 @@ func TestElevatorStateInitialisation(t *testing.T) {
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	floorStart := 3
 	go func() {
@@ -102,6 +105,8 @@ func TestNewElevatorStateCommands(t *testing.T) {
 	_ = logger.GetLoggerConfigured(zerolog.Disabled)
 	eventChannel := make(chan elevevent.ElevatorEvent, 10)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 1)
+	stateInChannel := make(chan ElevatorState, 10)
+	stateOutChannel := make(chan ElevatorState, 10)
 	clearUpDownOnArrival := false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -109,7 +114,7 @@ func TestNewElevatorStateCommands(t *testing.T) {
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	floorStart := 3
 	go func() {
@@ -173,6 +178,8 @@ func TestElevatorStateStartTimeout(t *testing.T) {
 	_ = logger.GetLoggerConfigured(zerolog.Disabled)
 	eventChannel := make(chan elevevent.ElevatorEvent, 10)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 1)
+	stateInChannel := make(chan ElevatorState, 10)
+	stateOutChannel := make(chan ElevatorState, 10)
 	clearUpDownOnArrival := false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -180,7 +187,7 @@ func TestElevatorStateStartTimeout(t *testing.T) {
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	err := elevState.Start(ctx, wg)
 	if err == nil {
@@ -193,6 +200,8 @@ func TestDoorOpenDuration(t *testing.T) {
 	_ = logger.GetLoggerConfigured(zerolog.Disabled)
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
+	stateInChannel := make(chan ElevatorState, 10)
+	stateOutChannel := make(chan ElevatorState, 10)
 	clearUpDownOnArrival := false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -200,7 +209,7 @@ func TestDoorOpenDuration(t *testing.T) {
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	floorStart := 1
 	go func() {
@@ -255,6 +264,9 @@ func TestObstruction(t *testing.T) {
 	_ = logger.GetLoggerConfigured(zerolog.Disabled)
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
+	stateInChannel := make(chan ElevatorState, 10)
+	stateOutChannel := make(chan ElevatorState, 10)
+
 	clearUpDownOnArrival := false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -262,7 +274,7 @@ func TestObstruction(t *testing.T) {
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	floorStart := 1
 	go func() {
@@ -332,6 +344,8 @@ func TestStopButton(t *testing.T) {
 	_ = logger.GetLoggerConfigured(zerolog.Disabled)
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
+	stateInChannel := make(chan ElevatorState, 10)
+	stateOutChannel := make(chan ElevatorState, 10)
 	clearUpDownOnArrival := false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -339,7 +353,7 @@ func TestStopButton(t *testing.T) {
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	floorStart := 0
 	floorButtonRequest := 3
@@ -393,6 +407,8 @@ func TestCabCall(t *testing.T) {
 	_ = logger.GetLoggerConfigured(zerolog.Disabled)
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
+	stateInChannel := make(chan ElevatorState, 10)
+	stateOutChannel := make(chan ElevatorState, 10)
 	clearUpDownOnArrival := false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -400,7 +416,7 @@ func TestCabCall(t *testing.T) {
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	floorStart := 0
 	floorButtonRequest := 3
@@ -460,6 +476,8 @@ func TestHallCall(t *testing.T) {
 	_ = logger.GetLoggerConfigured(zerolog.Disabled)
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
+	stateInChannel := make(chan ElevatorState, 10)
+	stateOutChannel := make(chan ElevatorState, 10)
 	clearUpDownOnArrival := false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -467,7 +485,7 @@ func TestHallCall(t *testing.T) {
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	floorStart := 1
 	floorButtonRequest := 2
@@ -522,6 +540,8 @@ func TestFullJourney(t *testing.T) {
 	_ = logger.GetLoggerConfigured(zerolog.Disabled)
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
+	stateInChannel := make(chan ElevatorState, 10)
+	stateOutChannel := make(chan ElevatorState, 10)
 	clearUpDownOnArrival := false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -529,7 +549,7 @@ func TestFullJourney(t *testing.T) {
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	floorStart := 0
 	floorButtonRequest := 2
@@ -614,6 +634,8 @@ func TestInitialisationBetweenFloors(t *testing.T) {
 	_ = logger.GetLoggerConfigured(zerolog.Disabled)
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
+	stateInChannel := make(chan ElevatorState, 10)
+	stateOutChannel := make(chan ElevatorState, 10)
 	clearUpDownOnArrival := false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -621,7 +643,7 @@ func TestInitialisationBetweenFloors(t *testing.T) {
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	floorStart := -1
 	go func() {
