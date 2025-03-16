@@ -6,12 +6,10 @@ import (
 	"os/exec"
 	"runtime"
 
-	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevator"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevnet"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 )
-
-// TODO: improve names
 
 type HallRequestAssignerElevatorState struct {
 	Behavior    string `json:"behaviour"`
@@ -25,7 +23,6 @@ type HallRequestAssignerInput struct {
 	States       map[string]HallRequestAssignerElevatorState `json:"states"`
 }
 
-// TODO: pointer or not as input?
 func getHallRequestAssignerElevatorState(elevatorState *elevstate.ElevatorState) HallRequestAssignerElevatorState {
 	var cabRequests [elevconsts.N_FLOORS]bool
 	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
@@ -42,15 +39,17 @@ func getHallRequestAssignerElevatorState(elevatorState *elevstate.ElevatorState)
 }
 
 // TODO: check if a list of elevators is correct input
-func getHallRequestAssignerInput(elevatorList []elevator.Elevator) HallRequestAssignerInput {
+func getHallRequestAssignerInput(localElevatorState elevstate.ElevatorState, elevatorMessageMap map[string]elevnet.ElevatorMessage) HallRequestAssignerInput {
+
 	hallRequests := [elevconsts.N_FLOORS][2]bool{}
 	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
-		hallRequests[floor][elevconsts.HallUp] = elevatorList[0].State.Requests[floor][elevconsts.HallUp] != 0
-		hallRequests[floor][elevconsts.HallDown] = elevatorList[0].State.Requests[floor][elevconsts.HallDown] != 0
+		hallRequests[floor][elevconsts.HallUp] = localElevatorState.Requests[floor][elevconsts.HallUp] != 0
+		hallRequests[floor][elevconsts.HallDown] = localElevatorState.Requests[floor][elevconsts.HallDown] != 0
 	}
+
 	states := make(map[string]HallRequestAssignerElevatorState)
-	for _, elevator := range elevatorList {
-		states[elevator.MetaData.Identifier] = getHallRequestAssignerElevatorState(elevator.State)
+	for id, elevatorMsg := range elevatorMessageMap {
+		states[id] = getHallRequestAssignerElevatorState(&elevatorMsg.ElevatorState)
 	}
 	return HallRequestAssignerInput{
 		HallRequests: hallRequests[:],
@@ -96,14 +95,24 @@ func getOptimalHallRequests(executableVersion string, input HallRequestAssignerI
 	return (*output)
 }
 
-func ReassignAllHallRequests(elevatorList *[]elevator.Elevator) {
+func ReassignAllHallRequests(listener *elevnet.ElevNetListen) {
+	elevatorMessageMap := listener.GetElevatorMessageMap()
+	localElevatorState := listener.ElevatorState
+
 	executableVersion := getExecutableVersion()
-	input := getHallRequestAssignerInput(*elevatorList)
+	input := getHallRequestAssignerInput(*localElevatorState, elevatorMessageMap)
 	optimalHallRequests := getOptimalHallRequests(executableVersion, input)
-	for _, elevator := range *elevatorList {
+
+	// Update local elevator state (might move to separate function)
+	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
+		localElevatorState.Requests[floor][elevconsts.HallUp] = toInt(optimalHallRequests[listener.ElevMetaData.Identifier][floor][elevconsts.HallUp])
+		localElevatorState.Requests[floor][elevconsts.HallDown] = toInt(optimalHallRequests[listener.ElevMetaData.Identifier][floor][elevconsts.HallDown])
+	}
+
+	// Find best way to send new hall requests to other elevators
+	for id, elevator := range elevatorMessageMap {
 		for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
-			elevator.State.Requests[floor][elevconsts.HallUp] = toInt(optimalHallRequests[elevator.MetaData.Identifier][floor][elevconsts.HallUp])
-			elevator.State.Requests[floor][elevconsts.HallDown] = toInt(optimalHallRequests[elevator.MetaData.Identifier][floor][elevconsts.HallDown])
+			//something to create a maeesage to be sent to the other elevators
 		}
 	}
 }

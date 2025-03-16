@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"time"
+	"sync"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
@@ -29,7 +30,8 @@ type ElevNetListen struct {
 	listening     bool                       //internal variable
 	startStopCh   chan int                   //internal variable
 	conn          *net.UDPConn               //internal variable
-	elevMetaData  *elevmetadata.ElevMetaData //internal variable
+	ElevMetaData  *elevmetadata.ElevMetaData //internal variable
+	mu            sync.Mutex
 	elevatorArray []ElevatorListObject
 	ElevatorState *elevstate.ElevatorState
 }
@@ -42,13 +44,13 @@ func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *el
 		listening:               false,
 		startStopCh:             make(chan int),
 		conn:                    nil,
-		elevMetaData:            elevMetaData,
+		ElevMetaData:            elevMetaData,
 		ElevatorState:           elevatorState,
 	}
 }
 
 func (enl *ElevNetListen) Start() error {
-	udpAddress, err := net.ResolveUDPAddr("udp", enl.elevMetaData.GetIPAddressPort())
+	udpAddress, err := net.ResolveUDPAddr("udp", enl.ElevMetaData.GetIPAddressPort())
 	if err != nil {
 		return fmt.Errorf("error resolving UDP Address: %v", err)
 	}
@@ -145,4 +147,16 @@ func (nl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
 	}
 	fmt.Printf("\n")
 	nl.elevatorArray = filtered // Update original slice
+}
+
+func (nl *ElevNetListen) GetElevatorMessageMap() map[string]ElevatorMessage {
+    nl.mu.Lock()
+    defer nl.mu.Unlock()
+
+    messages := make(map[string]ElevatorMessage)
+    for _, obj := range nl.elevatorArray {
+        identifier := obj.msg.ElevatorData.Identifier
+        messages[identifier] = obj.msg
+    }
+    return messages
 }
