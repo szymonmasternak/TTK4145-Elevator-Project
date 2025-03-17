@@ -9,11 +9,13 @@ import (
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
+	//"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 )
 
 const ConnectionCheck = 200 * time.Millisecond
 const WaitForReconnection = 500 * time.Millisecond
 
+// ElevatorListObject holds a received message and its status.
 type ElevatorListObject struct {
 	msg              ElevatorMessage
 	timeSeen         time.Time
@@ -21,22 +23,25 @@ type ElevatorListObject struct {
 	timeDisconnected time.Time
 }
 
+// ElevNetListen encapsulates the listening functionality.
 type ElevNetListen struct {
-	ElevatorsFoundOnNetwork chan ElevatorMessage //returns elevators broadcasted on network
+	// Channel for forwarding received broadcast messages.
+	ElevatorsFoundOnNetwork chan ElevatorMessage
 	stateInChannel          <-chan elevstate.ElevatorState
 	stateOutChannel         <-chan elevstate.ElevatorState
 
-	listening     bool                       //internal variable
-	startStopCh   chan int                   //internal variable
-	conn          *net.UDPConn               //internal variable
-	elevMetaData  *elevmetadata.ElevMetaData //internal variable
+	listening     bool                       // internal flag
+	startStopCh   chan int                   // for shutdown signaling
+	conn          *net.UDPConn               // UDP connection used for listening
+	elevMetaData  *elevmetadata.ElevMetaData // metadata for this elevator
 	elevatorArray []ElevatorListObject
 	ElevatorState *elevstate.ElevatorState
+	ackChan       chan AckMessage // Channel for ACKs
 }
 
 func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState) *ElevNetListen {
 	return &ElevNetListen{
-		ElevatorsFoundOnNetwork: make(chan ElevatorMessage),
+		ElevatorsFoundOnNetwork: make(chan ElevatorMessage, 10), // buffered to avoid blocking
 		stateInChannel:          stateInChannel,
 		stateOutChannel:         stateOutChannel,
 		listening:               false,
@@ -44,9 +49,11 @@ func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *el
 		conn:                    nil,
 		elevMetaData:            elevMetaData,
 		ElevatorState:           elevatorState,
+		ackChan:                 make(chan AckMessage, 100),
 	}
 }
 
+// Start starts the listener by binding to the UDP address and launching goroutines.
 func (enl *ElevNetListen) Start() error {
 	udpAddress, err := net.ResolveUDPAddr("udp", enl.elevMetaData.GetIPAddressPort())
 	if err != nil {
@@ -62,31 +69,74 @@ func (enl *ElevNetListen) Start() error {
 
 	go func() {
 		for {
-			n, _, err := enl.conn.ReadFromUDP(listenBuffer)
+			n, addr, err := enl.conn.ReadFromUDP(listenBuffer)
 			if err != nil {
+				// If the connection is closed, exit gracefully.
+				if opErr, ok := err.(*net.OpError); ok && opErr.Err.Error() == "use of closed network connection" {
+					return
+				}
 				Log.Error().Msgf("Error reading UDP message: %v", err)
 				continue
 			}
-			// var node elevmetadata.ElevMetaData
-			// err = json.Unmarshal(listenBuffer[:n], &node)
 			var msg ElevatorMessage
 			err = json.Unmarshal(listenBuffer[:n], &msg)
-
 			if err != nil {
 				Log.Error().Msgf("Error deserialising JSON: %v", err)
+				continue
+			}
+
+			// If the message is not already an ACK, then we send an ACK back.
+			if !msg.AckMsg.Acknowledged {
+				// Immediately construct an ACK response with a fresh timestamp.
+				ackResponse := ElevatorMessage{
+					ElevatorData:  msg.ElevatorData,
+					ElevatorState: msg.ElevatorState,
+					AckMsg: AckMessage{
+						ID:           msg.AckMsg.ID,
+						Acknowledged: true,
+						TimeSent:     time.Now(), // Fresh timestamp from the listener.
+					},
+				}
+
+				// Marshal and send the ACK response back to the sender.
+				jsonAck, err := json.Marshal(ackResponse)
+				if err != nil {
+					Log.Error().Msgf("Error marshalling ACK JSON: %v", err)
+				} else {
+					_, err = enl.conn.WriteToUDP(jsonAck, addr)
+					if err != nil {
+						Log.Error().Msgf("Error writing ACK to UDP Socket: %v", err)
+					} else {
+						Log.Debug().Msgf("Sent ACK for message ID %d", msg.AckMsg.ID)
+					}
+				}
+
+				// Forward the original broadcast message non-blockingly.
+				select {
+				case enl.ElevatorsFoundOnNetwork <- msg:
+				default:
+					Log.Warn().Msg("ElevatorsFoundOnNetwork channel full, dropping message")
+				}
 			} else {
-				enl.ElevatorsFoundOnNetwork <- msg
+				// If the message is an ACK, forward it to the ack channel non-blockingly.
+				select {
+				case enl.ackChan <- msg.AckMsg:
+					Log.Debug().Msgf("Received ACK for message ID %d", msg.AckMsg.ID)
+				default:
+					Log.Warn().Msgf("ACK channel full, dropping ACK for message ID %d", msg.AckMsg.ID)
+				}
 			}
 		}
 	}()
 
+	// Shutdown goroutine.
 	go func() {
 		defer enl.conn.Close()
 		for {
 			select {
 			case val := <-enl.startStopCh:
 				if val == 0 {
-					Log.Info().Msgf("Stopping Listening task...")
+					Log.Info().Msg("Stopping Listening task...")
 					return
 				}
 			}
@@ -103,32 +153,31 @@ func (enl *ElevNetListen) Stop() error {
 
 	enl.startStopCh <- 0
 	enl.listening = false
-
 	return nil
 }
 
 func (nl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
-	var elavatorFound bool
-	elavatorFound = false
+	var elevatorFound bool
+	elevatorFound = false
 	for i := 0; i < len(nl.elevatorArray); i++ {
 		if msg.ElevatorData.Identifier == nl.elevatorArray[i].msg.ElevatorData.Identifier {
-			elavatorFound = true
+			elevatorFound = true
 			nl.elevatorArray[i].timeSeen = time.Now()
 			nl.elevatorArray[i].disconnected = false
 			nl.elevatorArray[i].msg.ElevatorState = msg.ElevatorState
 			break
 		}
 	}
-	if !elavatorFound {
+	if !elevatorFound {
 		nl.elevatorArray = append(nl.elevatorArray, ElevatorListObject{msg, time.Now(), false, time.Time{}})
 	}
 	Logger.Info().Msgf("Node list: ")
 
-	filtered := nl.elevatorArray[:0] // Keep only valid elements
+	filtered := nl.elevatorArray[:0]
 
 	for i := 0; i < len(nl.elevatorArray); i++ {
 		if time.Now().Before(nl.elevatorArray[i].timeSeen.Add(ConnectionCheck)) {
-			filtered = append(filtered, nl.elevatorArray[i]) // Keep only non-stale nodes
+			filtered = append(filtered, nl.elevatorArray[i])
 			fmt.Printf("%v, ", nl.elevatorArray[i].msg.ElevatorData.Identifier)
 		} else {
 			nl.elevatorArray[i].disconnected = true
@@ -144,5 +193,5 @@ func (nl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
 		}
 	}
 	fmt.Printf("\n")
-	nl.elevatorArray = filtered // Update original slice
+	nl.elevatorArray = filtered
 }
