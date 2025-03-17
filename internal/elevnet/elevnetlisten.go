@@ -9,7 +9,6 @@ import (
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
-	//"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 )
 
 const ConnectionCheck = 200 * time.Millisecond
