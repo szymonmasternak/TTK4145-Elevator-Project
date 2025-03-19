@@ -24,7 +24,6 @@ const (
 	EVENT_CHANNEL_SIZE     = 10
 	COMMAND_CHANNEL_SIZE   = 1
 	IDENTIFIER_DEFAULT_LEN = 10
-	DEFAULT_DRIVER_ADDRESS = "localhost:15657"
 )
 
 type Elevator struct {
@@ -46,7 +45,7 @@ type Elevator struct {
 	cancelArray    []context.CancelFunc
 }
 
-func NewElevator(identifier string, portNumber uint16, clearUpDownOnArrival bool) *Elevator {
+func NewElevator(identifier string, portNumber uint16, driverIPAddress string, clearUpDownOnArrival bool) *Elevator {
 	if identifier == "" {
 		identifier = randomstring.EnglishFrequencyString(IDENTIFIER_DEFAULT_LEN) //this should be random enough
 		Logger.Warn().Msgf("No elevator identifier provided, generated random identifier \"%v\"", identifier)
@@ -64,7 +63,7 @@ func NewElevator(identifier string, portNumber uint16, clearUpDownOnArrival bool
 	stateInChannel := make(chan elevstate.ElevatorState, 10)
 	stateOutChannel := make(chan elevstate.ElevatorState, 10)
 
-	elevIO, err := elevio.NewElevatorIO(DEFAULT_DRIVER_ADDRESS, elevconsts.N_FLOORS, eventChannel, commandChannel)
+	elevIO, err := elevio.NewElevatorIO(driverIPAddress, elevconsts.N_FLOORS, eventChannel, commandChannel)
 	if err != nil {
 		panic("Error Creating ElevIO Object")
 	}
