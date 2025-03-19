@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -17,17 +18,24 @@ func GetGitHash() string {
 	return gitHash
 }
 
-func ProcessCmdArgs() (string, uint16, bool) {
+func ProcessCmdArgs() (string, uint16, bool, string) {
 	help := flag.Bool("help", false, "Show Help Window")
 	version := flag.Bool("version", false, "Show Version")
 	identifier := flag.String("id", "", "Set the identifier of the elevator. Defaults to random string")
-	portNumber := flag.Uint64("port", 9999, "Set the port number of the elevator. Defaults to 9999")
+	portNumber := flag.Uint64("port", 9999, "Set the port number that the elevator advertises at. Defaults to 9999")
+	driverIPAddress := flag.String("driverip", "localhost:15657", "Set the IP address of the driver. Defaults to localhost:15657")
 	clearUpDownOnArrival := flag.Bool("clearupdownonarrival", false, "Clear the Up and Down requests at floor arrival. Defaults to false")
 
 	flag.Parse()
 
 	if *portNumber > 65535 || *portNumber < 1 {
 		fmt.Println("Port number must be between 1 and 65535")
+		os.Exit(1)
+	}
+
+	_, err := regexp.MatchString(`:\d+$`, *driverIPAddress)
+	if err != nil {
+		fmt.Printf("Driver IP Address must be specified in the format [IP:PORT], example: localhost:15657\n")
 		os.Exit(1)
 	}
 
@@ -53,7 +61,7 @@ func ProcessCmdArgs() (string, uint16, bool) {
 		os.Exit(0)
 	}
 
-	return *identifier, uint16(*portNumber), *clearUpDownOnArrival
+	return *identifier, uint16(*portNumber), *clearUpDownOnArrival, *driverIPAddress
 }
 
 var localIP string //local string, not to be accessed anywhere
