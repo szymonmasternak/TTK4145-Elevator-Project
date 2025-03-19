@@ -35,7 +35,7 @@ func ProcessCmdArgs() (string, uint16, bool, string) {
 
 	_, err := regexp.MatchString(`:\d+$`, *driverIPAddress)
 	if err != nil {
-		fmt.Printf("Driver IP Address must be specified in the format [IP:PORT], example: localhost:15657\n")
+		fmt.Println("Driver IP Address must be specified in the format [IP:PORT], example: localhost:15657")
 		os.Exit(1)
 	}
 
