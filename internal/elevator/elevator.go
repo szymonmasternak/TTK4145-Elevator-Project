@@ -7,13 +7,13 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevevent"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevhallrequestassigner"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevio"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevnet"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevutils"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
-
-	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 
 	"github.com/xyproto/randomstring"
 )
@@ -28,10 +28,11 @@ const (
 )
 
 type Elevator struct {
-	MetaData *elevmetadata.ElevMetaData //this contains all elevator constant metadata
-	Network  *elevnet.ElevatorNetwork
-	IO       *elevio.ElevatorIO
-	State    *elevstate.ElevatorState
+	MetaData            *elevmetadata.ElevMetaData //this contains all elevator constant metadata
+	Network             *elevnet.ElevatorNetwork
+	IO                  *elevio.ElevatorIO
+	State               *elevstate.ElevatorState
+	HallRequestAssigner *elevhallrequestassigner.HallRequestAssigner
 
 	eventChannel    chan elevevent.ElevatorEvent
 	commandChannel  chan elevcmd.ElevatorCommand
@@ -70,16 +71,20 @@ func NewElevator(identifier string, portNumber uint16, clearUpDownOnArrival bool
 	}
 
 	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
-
+	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateInChannel, stateOutChannel)
+	elevAssigner := elevhallrequestassigner.NewHallRequestAssigner(elevatorMetadata.Identifier, elevNetwork.Listen, eventChannel, stateOutChannel)
 	return &Elevator{
-		MetaData:       elevatorMetadata,
-		Network:        elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateInChannel, stateOutChannel),
-		IO:             elevIO,
-		State:          elevState,
-		initialised:    true,
-		running:        false,
-		eventChannel:   eventChannel,
-		commandChannel: commandChannel,
+		MetaData:            elevatorMetadata,
+		Network:             elevNetwork,
+		IO:                  elevIO,
+		State:               elevState,
+		HallRequestAssigner: elevAssigner,
+		initialised:         true,
+		running:             false,
+		eventChannel:        eventChannel,
+		commandChannel:      commandChannel,
+		stateInChannel:      stateInChannel,
+		stateOutChannel:     stateOutChannel,
 	}
 }
 
@@ -108,6 +113,12 @@ func (e *Elevator) Start() {
 	e.cancelArray = append(e.cancelArray, cancelState)
 
 	//Todo add other threads
+	//Launch Threads One By One
+	ctxAssigner, cancelAssigner := context.WithCancel(context.Background())
+	wgAssigner := &sync.WaitGroup{}
+	e.waitGroupArray = append(e.waitGroupArray, wgAssigner)
+	e.HallRequestAssigner.Start(ctxAssigner, wgAssigner)
+	e.cancelArray = append(e.cancelArray, cancelAssigner)
 
 	e.running = true
 }

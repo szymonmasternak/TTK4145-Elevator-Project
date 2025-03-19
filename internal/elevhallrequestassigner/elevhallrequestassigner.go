@@ -1,15 +1,31 @@
 package elevhallrequestassigner
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
 	"runtime"
+	"sync"
+	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevevent"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevnet"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 )
+
+var Log = logger.GetLogger()
+
+type HallRequestAssigner struct {
+	localID              string
+	localNetworkListener *elevnet.ElevNetListen
+	executableVersion    string
+
+	eventChannel              chan<- elevevent.ElevatorEvent
+	localStateRecieverChannel <-chan elevstate.ElevatorState
+}
 
 type HallRequestAssignerElevatorState struct {
 	Behavior    string `json:"behaviour"`
@@ -21,6 +37,51 @@ type HallRequestAssignerElevatorState struct {
 type HallRequestAssignerInput struct {
 	HallRequests [][2]bool                                   `json:"hallRequests"`
 	States       map[string]HallRequestAssignerElevatorState `json:"states"`
+}
+
+func NewHallRequestAssigner(localID string, localNetworkListener *elevnet.ElevNetListen, eventChannel chan<- elevevent.ElevatorEvent, localStateRecieverChannel <-chan elevstate.ElevatorState) *HallRequestAssigner {
+	return &HallRequestAssigner{
+		localID:                   localID,
+		localNetworkListener:      localNetworkListener,
+		executableVersion:         getExecutableVersion(),
+		eventChannel:              eventChannel,
+		localStateRecieverChannel: localStateRecieverChannel,
+	}
+}
+
+func (assigner *HallRequestAssigner) Start(ctx context.Context, waitGroup *sync.WaitGroup) {
+	Log.Debug().Msgf("HallRequestAssigner started")
+	assignerTicker := time.NewTicker(100 * time.Millisecond)
+	//defer assignerTicker.Stop()
+
+	waitGroup.Add(1)
+	go func() {
+		defer waitGroup.Done()
+		Log.Debug().Msgf("HallRequestAssigner goroutine started")
+		for {
+			select {
+			case <-ctx.Done():
+				Log.Warn().Msgf("Assigner Start has been signaled to stop")
+				return
+			case <-assignerTicker.C:
+				localState := <-assigner.localStateRecieverChannel
+				Log.Debug().Msgf("HallRequestAssigner got local state")
+				stateMap := assigner.localNetworkListener.GetElevatorMessageMap()
+				input := getHallRequestAssignerInput(localState, stateMap)
+				if len(input.States) != 0 {
+					optimalHallRequests := getOptimalHallRequests(assigner.executableVersion, input)
+					Log.Debug().Msgf("HallRequestAssigner got optimal hall requests")
+					optimalLocalRequests := getOptimalLocalRequests(optimalHallRequests, localState.Requests, assigner.localID)
+					assigner.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.UpdateHallRequestsEvent{Requests: optimalLocalRequests}}
+
+				}
+
+				// if localState.Requests != optimalLocalRequests {
+				// 	assigner.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.UpdateHallRequestsEvent{Requests: optimalLocalRequests}}
+				// }
+			}
+		}
+	}()
 }
 
 func getHallRequestAssignerElevatorState(elevatorState *elevstate.ElevatorState) HallRequestAssignerElevatorState {
@@ -38,8 +99,8 @@ func getHallRequestAssignerElevatorState(elevatorState *elevstate.ElevatorState)
 	}
 }
 
-// TODO: check if a list of elevators is correct input
-func getHallRequestAssignerInput(localElevatorState elevstate.ElevatorState, elevatorMessageMap map[string]elevnet.ElevatorMessage) HallRequestAssignerInput {
+// TODO: check if localelevator is in map
+func getHallRequestAssignerInput(localElevatorState elevstate.ElevatorState, elevatorStateMap map[string]elevstate.ElevatorState) HallRequestAssignerInput {
 
 	hallRequests := [elevconsts.N_FLOORS][2]bool{}
 	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
@@ -48,8 +109,8 @@ func getHallRequestAssignerInput(localElevatorState elevstate.ElevatorState, ele
 	}
 
 	states := make(map[string]HallRequestAssignerElevatorState)
-	for id, elevatorMsg := range elevatorMessageMap {
-		states[id] = getHallRequestAssignerElevatorState(&elevatorMsg.ElevatorState)
+	for id, state := range elevatorStateMap {
+		states[id] = getHallRequestAssignerElevatorState(&state)
 	}
 	return HallRequestAssignerInput{
 		HallRequests: hallRequests[:],
@@ -79,7 +140,7 @@ func getOptimalHallRequests(executableVersion string, input HallRequestAssignerI
 		return nil
 	}
 
-	ret, err := exec.Command("..../libs/hall_request_assigner/"+executableVersion, "-i", string(jsonBytes)).CombinedOutput()
+	ret, err := exec.Command("../libs/hall_request_assigner/"+executableVersion, "-i", string(jsonBytes)).CombinedOutput()
 	if err != nil {
 		fmt.Println("exec.Command error: ", err)
 		fmt.Println(string(ret))
@@ -95,26 +156,14 @@ func getOptimalHallRequests(executableVersion string, input HallRequestAssignerI
 	return (*output)
 }
 
-func ReassignAllHallRequests(listener *elevnet.ElevNetListen) {
-	elevatorMessageMap := listener.GetElevatorMessageMap()
-	localElevatorState := listener.ElevatorState
-
-	executableVersion := getExecutableVersion()
-	input := getHallRequestAssignerInput(*localElevatorState, elevatorMessageMap)
-	optimalHallRequests := getOptimalHallRequests(executableVersion, input)
-
-	// Update local elevator state (might move to separate function)
+func getOptimalLocalRequests(optimalHallRequests map[string][][2]bool, originalLocalRequests [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int, localID string) [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int {
+	localRequests := [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int{}
 	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
-		localElevatorState.Requests[floor][elevconsts.HallUp] = toInt(optimalHallRequests[listener.ElevMetaData.Identifier][floor][elevconsts.HallUp])
-		localElevatorState.Requests[floor][elevconsts.HallDown] = toInt(optimalHallRequests[listener.ElevMetaData.Identifier][floor][elevconsts.HallDown])
+		localRequests[floor][elevconsts.HallUp] = toInt(optimalHallRequests[localID][floor][elevconsts.HallUp])
+		localRequests[floor][elevconsts.HallDown] = toInt(optimalHallRequests[localID][floor][elevconsts.HallDown])
+		localRequests[floor][elevconsts.Cab] = originalLocalRequests[floor][elevconsts.Cab]
 	}
-
-	// Find best way to send new hall requests to other elevators
-	for id, elevator := range elevatorMessageMap {
-		for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
-			//something to create a maeesage to be sent to the other elevators
-		}
-	}
+	return localRequests
 }
 
 func toInt(b bool) int {

@@ -81,6 +81,9 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 		es.Behaviour = elevconsts.Moving
 	}
 
+	BroadcastTicker := time.NewTicker(1 * time.Second)
+	defer BroadcastTicker.Stop()
+
 	waitGroup.Add(1)
 	go func() {
 		defer waitGroup.Done()
@@ -106,9 +109,17 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 				case elevevent.ObstructionEvent:
 					Log.Info().Msgf("Obstruction Button is %v", evnt.Value)
 					es.handleObstruction(evnt.Value)
+				case elevevent.UpdateHallRequestsEvent:
+					Log.Info().Msgf("Requests Updated to %v", evnt.Requests)
+					es.handleUpdateHallRequests(evnt.Requests)
 				case elevevent.RequestFloorEvent:
 					Log.Error().Msgf("RequestFloorEvent should not occur")
 				}
+				// Update state in the network
+				es.BroadcastState()
+			case <-BroadcastTicker.C:
+				// Periodically broadcast the state regardless of events.
+				es.BroadcastState()
 			default:
 				if time.Now().After(es.doorOpenTime.Add(es.doorOpenDuration)) {
 					if es.Behaviour == elevconsts.DoorOpen {
@@ -259,8 +270,14 @@ func (es *ElevatorState) handleObstruction(obstructionState bool) {
 	es.obstructionSensor = obstructionState
 }
 
+func (es *ElevatorState) handleUpdateHallRequests(requests [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int) {
+	es.Requests = requests
+	es.setAllLightsSequence()
+}
+
 func (es *ElevatorState) BroadcastState() {
 	es.stateOutChannel <- *es
+	Log.Debug().Msgf("Broadcasted State")
 }
 
 func (es *ElevatorState) UpdateState(newState ElevatorState) {
