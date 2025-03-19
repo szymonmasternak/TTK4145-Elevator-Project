@@ -52,11 +52,11 @@ func NewHallRequestAssigner(localID string, localNetworkListener *elevnet.ElevNe
 func (assigner *HallRequestAssigner) Start(ctx context.Context, waitGroup *sync.WaitGroup) {
 	Log.Debug().Msgf("HallRequestAssigner started")
 	assignerTicker := time.NewTicker(100 * time.Millisecond)
-	//defer assignerTicker.Stop()
 
 	waitGroup.Add(1)
 	go func() {
 		defer waitGroup.Done()
+		defer assignerTicker.Stop()
 		Log.Debug().Msgf("HallRequestAssigner goroutine started")
 		for {
 			select {
