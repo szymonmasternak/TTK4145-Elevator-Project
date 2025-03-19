@@ -40,7 +40,7 @@ type ElevNetListen struct {
 
 func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState) *ElevNetListen {
 	return &ElevNetListen{
-		ElevatorsFoundOnNetwork: make(chan ElevatorMessage, 10), // buffered to avoid blocking
+		ElevatorsFoundOnNetwork: make(chan ElevatorMessage, 10000), // buffered to avoid blocking
 		stateInChannel:          stateInChannel,
 		stateOutChannel:         stateOutChannel,
 		listening:               false,
@@ -84,20 +84,19 @@ func (enl *ElevNetListen) Start() error {
 				continue
 			}
 
-			// If the message is not already an ACK, then we send an ACK back.
+			// If the message is not already an ACK, send an ACK response.
 			if !msg.AckMsg.Acknowledged {
-				// Immediately construct an ACK response with a fresh timestamp.
+				// Create an ACK response with a fresh timestamp.
 				ackResponse := ElevatorMessage{
 					ElevatorData:  msg.ElevatorData,
 					ElevatorState: msg.ElevatorState,
 					AckMsg: AckMessage{
 						ID:           msg.AckMsg.ID,
 						Acknowledged: true,
-						TimeSent:     time.Now(), // Fresh timestamp from the listener.
+						TimeSent:     time.Now(), // Set fresh timestamp.
 					},
 				}
-
-				// Marshal and send the ACK response back to the sender.
+				enl.ackChan <- ackResponse.AckMsg
 				jsonAck, err := json.Marshal(ackResponse)
 				if err != nil {
 					Log.Error().Msgf("Error marshalling ACK JSON: %v", err)
@@ -106,7 +105,7 @@ func (enl *ElevNetListen) Start() error {
 					if err != nil {
 						Log.Error().Msgf("Error writing ACK to UDP Socket: %v", err)
 					} else {
-						Log.Debug().Msgf("Sent ACK for message ID %d", msg.AckMsg.ID)
+						Log.Debug().Msgf("Sent ACK for message ID %d, time stamp: %s", msg.AckMsg.ID, msg.AckMsg.TimeSent.Format(time.RFC3339))
 					}
 				}
 
@@ -128,7 +127,6 @@ func (enl *ElevNetListen) Start() error {
 		}
 	}()
 
-	// Shutdown goroutine.
 	go func() {
 		defer enl.conn.Close()
 		for {

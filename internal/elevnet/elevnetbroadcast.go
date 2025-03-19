@@ -18,9 +18,10 @@ var Log = logger.GetLogger()
 
 // Constants for timing.
 const (
-	ACK_PERIOD               = 50 * time.Millisecond
-	RETRANSMISSION_THRESHOLD = 100 * time.Millisecond
+	ACK_PERIOD               = 400 * time.Millisecond
+	RETRANSMISSION_THRESHOLD = 700 * time.Millisecond
 	MAX_RETRIES              = 5
+	//BUFFER_LENGTH            = 1024
 )
 
 // AckMessage carries an acknowledgment, including when it was sent.
@@ -38,6 +39,8 @@ type ElevatorMessage struct {
 }
 
 func MakeAckMessage(id int, ack bool) AckMessage {
+	// This function is used by the broadcaster when constructing a non-ACK message.
+	// (The listener will create a fresh ACK with time.Now().)
 	return AckMessage{
 		ID:           id,
 		Acknowledged: ack,
@@ -90,7 +93,6 @@ func NewElevNetBroadcast(metaData *elevmetadata.ElevMetaData, elevatorState *ele
 }
 
 // waitForAck registers a dedicated channel for the given messageID and returns it.
-// The sender goroutine will wait on this channel.
 func (enb *ElevNetBroadcast) waitForAck(messageID int) <-chan AckMessage {
 	ch := make(chan AckMessage, 1)
 	enb.registryMu.Lock()
@@ -103,7 +105,7 @@ func (enb *ElevNetBroadcast) waitForAck(messageID int) <-chan AckMessage {
 func (enb *ElevNetBroadcast) deliverAck(ack AckMessage) {
 	enb.registryMu.Lock()
 	if ch, ok := enb.ackRegistry[ack.ID]; ok {
-		// Deliver the ACK and remove the entry.
+		Log.Debug().Msgf("Delivering ACK for message ID %d with timestamp %s", ack.ID, ack.TimeSent.Format(time.RFC3339Nano))
 		ch <- ack
 		delete(enb.ackRegistry, ack.ID)
 	} else {
@@ -113,10 +115,6 @@ func (enb *ElevNetBroadcast) deliverAck(ack AckMessage) {
 }
 
 // Start begins the broadcast process.
-// It launches three goroutines:
-// 1. A producer that enqueues messages based on ticker events and state updates.
-// 2. A sender that dequeues messages, sends them, and waits for ACKs (with retries).
-// 3. An ACK listener that reads ACK messages from the UDP connection and delivers them.
 func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 	if enb.broadcasting {
 		return errors.New("nodeBroadcast is already broadcasting")
@@ -157,7 +155,7 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 				msg := ElevatorMessage{
 					ElevatorData:  *enb.metaData,
 					ElevatorState: latestState,
-					AckMsg:        MakeAckMessage(index, false),
+					AckMsg:        MakeAckMessage(index, false), // non-ACK message
 				}
 				enb.msgQueue <- msg
 				index++
@@ -175,7 +173,6 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 		for {
 			select {
 			case msg := <-enb.msgQueue:
-				// Serialize and send the message.
 				jsonData, err := json.Marshal(msg)
 				if err != nil {
 					Log.Error().Msgf("Error marshalling JSON: %v", err)
@@ -188,19 +185,19 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 				}
 				Log.Debug().Msgf("Sent Packet: %v", string(jsonData))
 
-				// Register and wait for the ACK.
 				ackCh := enb.waitForAck(msg.AckMsg.ID)
 				retries := 0
-				// Use a loop so that if we need to retransmit, we can wait again.
 				for {
-					// Create a context with timeout for waiting.
 					ctx, cancel := context.WithTimeout(context.Background(), RETRANSMISSION_THRESHOLD)
 					select {
 					case ack := <-ackCh:
+						if ack.TimeSent.IsZero() {
+							Log.Error().Msgf("Received ACK with zero timestamp for message ID %d", ack.ID)
+							// We treat this as a timeout.
+						}
 						rtt := time.Since(ack.TimeSent)
 						if rtt > ACK_PERIOD {
 							Log.Warn().Msgf("Delayed ACK for message ID %d: RTT %v; retransmitting", ack.ID, rtt)
-							// Retransmit: update the timestamp and requeue.
 							msg.AckMsg.TimeSent = time.Now()
 							enb.msgQueue <- msg
 						} else {
@@ -218,10 +215,8 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 						Log.Warn().Msgf("Timeout waiting for ACK for message ID %d; retransmitting (retry %d)", msg.AckMsg.ID, retries)
 						msg.AckMsg.TimeSent = time.Now()
 						enb.msgQueue <- msg
-						// Re-register for the ACK since the previous channel might have been used.
 						ackCh = enb.waitForAck(msg.AckMsg.ID)
 					}
-					// Exit the inner loop if an ACK has been received in time.
 					break
 				}
 			case val := <-enb.startStopCh:
@@ -242,13 +237,19 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 				Log.Error().Msgf("Error reading from UDP: %v", err)
 				continue
 			}
-			var ack AckMessage
-			if err := json.Unmarshal(ackBuffer[:n], &ack); err != nil {
-				Log.Error().Msgf("Error unmarshalling ACK: %v", err)
+			// Unmarshal into an ElevatorMessage, then extract the AckMsg.
+			var elevMsg ElevatorMessage
+			if err := json.Unmarshal(ackBuffer[:n], &elevMsg); err != nil {
+				Log.Error().Msgf("Error unmarshalling ElevatorMessage: %v", err)
 				continue
 			}
-			// Deliver the ACK using the registry.
-			enb.deliverAck(ack)
+			if elevMsg.ElevatorData.Identifier != enb.metaData.Identifier {
+				Log.Debug().Msgf("Ignoring ACK from elevator %s, expected %s",
+					elevMsg.ElevatorData.Identifier, enb.metaData.Identifier)
+				continue // Skip ACKs from unexpected sources.
+			}
+			// Deliver the ACK.
+			enb.deliverAck(elevMsg.AckMsg)
 		}
 	}()
 
