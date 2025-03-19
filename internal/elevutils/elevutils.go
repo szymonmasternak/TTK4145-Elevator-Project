@@ -22,8 +22,8 @@ func ProcessCmdArgs() (string, uint16, bool, string) {
 	help := flag.Bool("help", false, "Show Help Window")
 	version := flag.Bool("version", false, "Show Version")
 	identifier := flag.String("id", "", "Set the identifier of the elevator. Defaults to random string")
-	portNumber := flag.Uint64("port", 9999, "Set the port number that the elevator advertises at. Defaults to 9999")
-	driverIPAddress := flag.String("driverip", "localhost:15657", "Set the IP address of the driver. Defaults to localhost:15657")
+	portNumber := flag.Uint64("port", 9999, "Set the port number that the elevator advertises at.")
+	driverIPAddress := flag.String("driverip", "localhost:15657", "Set the IP address of the driver.")
 	clearUpDownOnArrival := flag.Bool("clearupdownonarrival", false, "Clear the Up and Down requests at floor arrival. Defaults to false")
 
 	flag.Parse()
