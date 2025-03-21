@@ -66,7 +66,7 @@ func (assigner *HallRequestAssigner) Start(ctx context.Context, waitGroup *sync.
 			case <-assignerTicker.C:
 				localState := <-assigner.localStateRecieverChannel
 				Log.Debug().Msgf("HallRequestAssigner got local state")
-				stateMap := assigner.localNetworkListener.GetElevatorMessageMap()
+				stateMap := assigner.localNetworkListener.GetElevatorStateMap()
 				input := getHallRequestAssignerInput(localState, stateMap)
 				if len(input.States) != 0 {
 					optimalHallRequests := getOptimalHallRequests(assigner.executableVersion, input)

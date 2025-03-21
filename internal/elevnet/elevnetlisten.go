@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"time"
 	"sync"
+	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
@@ -30,14 +30,14 @@ type ElevNetListen struct {
 	stateInChannel          <-chan elevstate.ElevatorState
 	stateOutChannel         <-chan elevstate.ElevatorState
 
-	listening     bool                       // internal flag
-	startStopCh   chan int                   // for shutdown signaling
-	conn          *net.UDPConn               // UDP connection used for listening
-	elevMetaData  *elevmetadata.ElevMetaData // metadata for this elevator
-	elevatorArray []ElevatorListObject
+	listening        bool                       // internal flag
+	startStopCh      chan int                   // for shutdown signaling
+	conn             *net.UDPConn               // UDP connection used for listening
+	elevMetaData     *elevmetadata.ElevMetaData // metadata for this elevator
+	elevatorArray    []ElevatorListObject
 	elevatorArrayMtx sync.Mutex
-	ElevatorState *elevstate.ElevatorState
-	ackChan       chan AckMessage // Channel for ACKs
+	ElevatorState    *elevstate.ElevatorState
+	ackChan          chan AckMessage // Channel for ACKs
 }
 
 func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState) *ElevNetListen {
@@ -214,14 +214,14 @@ func (nl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
 	nl.elevatorArray = filtered // Update original slice
 }
 
-func (nl *ElevNetListen) GetElevatorMessageMap() map[string]ElevatorMessage {
-    nl.elevatorArrayMtx.Lock()
-    defer nl.elevatorArrayMtx.Unlock()
+func (nl *ElevNetListen) GetElevatorStateMap() map[string]elevstate.ElevatorState {
+	nl.elevatorArrayMtx.Lock()
+	defer nl.elevatorArrayMtx.Unlock()
 
-    messages := make(map[string]ElevatorMessage)
-    for _, obj := range nl.elevatorArray {
-        identifier := obj.msg.ElevatorData.Identifier
-        messages[identifier] = obj.msg
-    }
-    return messages
+	messages := make(map[string]elevstate.ElevatorState)
+	for _, obj := range nl.elevatorArray {
+		identifier := obj.msg.ElevatorData.Identifier
+		messages[identifier] = obj.msg.ElevatorState
+	}
+	return messages
 }
