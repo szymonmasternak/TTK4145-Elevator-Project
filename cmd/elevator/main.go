@@ -17,12 +17,12 @@ import (
 var Logger = logger.GetLoggerConfigured(zerolog.DebugLevel)
 
 func main() {
-	identifier, portNumber, clearUpDownOnArrival := elevutils.ProcessCmdArgs()
+	identifier, portNumber, clearUpDownOnArrival, driverIPAddress := elevutils.ProcessCmdArgs()
 
 	// Starting Programme
 	Logger.Info().Msg("Starting Elevator Programme")
 
-	elev := elevator.NewElevator(identifier, portNumber, clearUpDownOnArrival)
+	elev := elevator.NewElevator(identifier, portNumber, driverIPAddress, clearUpDownOnArrival)
 	elev.Start()
 
 	Logger.Info().Msgf("Elevator: %v", elev.MetaData.String())

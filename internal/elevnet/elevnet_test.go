@@ -1,6 +1,9 @@
 package elevnet
 
 import (
+	"encoding/json"
+	"net"
+	"reflect"
 	"testing"
 	"time"
 
@@ -8,7 +11,13 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 )
 
+func compareElevatorMessages(a, b ElevatorMessage) bool {
+	return reflect.DeepEqual(a.ElevatorData, b.ElevatorData) &&
+		reflect.DeepEqual(a.ElevatorState, b.ElevatorState)
+}
+
 func TestStartBroadcastingListening(t *testing.T) {
+
 	metaData := elevmetadata.ElevMetaData{
 		SoftwareVersion: "smj2acjkvv4h1zkwjz2ocsn2lkfrjmzf9qn4i2m3",
 		IpAddress:       "0.0.0.0",
@@ -18,7 +27,7 @@ func TestStartBroadcastingListening(t *testing.T) {
 
 	state := elevstate.ElevatorState{}
 
-	msg := MakeElevatorMessage(&metaData, &state)
+	expectedMsg := MakeElevatorMessage(&metaData, &state, 0, false)
 
 	stateInChannel := make(chan elevstate.ElevatorState)
 	stateOutChannel := make(chan elevstate.ElevatorState)
@@ -33,19 +42,18 @@ func TestStartBroadcastingListening(t *testing.T) {
 	network.Listen.Start()
 	defer network.Listen.Stop()
 
-	timerticker := time.NewTimer(listeningTimeout)
-	defer timerticker.Stop()
+	timer := time.NewTimer(listeningTimeout)
+	defer timer.Stop()
 
 	select {
 	case nodeFound := <-network.Listen.ElevatorsFoundOnNetwork:
-		if nodeFound != msg {
-			t.Errorf("Wrong Elevator found on network = %s, expected %s", nodeFound.ElevatorData.String(), metaData.String())
+		// Use the helper function to compare only the ElevatorData and ElevatorState.
+		if !compareElevatorMessages(nodeFound, expectedMsg) {
+			t.Errorf("Wrong Elevator found on network = %+v, expected %+v",
+				nodeFound.ElevatorData, expectedMsg.ElevatorData)
 		}
-		timerticker.Stop()
-		return
-	case <-timerticker.C:
+	case <-timer.C:
 		t.Errorf("Timed out waiting for elevator to be found on network")
-		return
 	}
 }
 
@@ -85,7 +93,7 @@ func TestAddNodeToList(t *testing.T) {
 	// 1st test: add one node to the list
 	node1data := elevmetadata.ElevMetaData{"sdijfoisj", "0.0.0.0", 9999, "elevator1"}
 	node1state := elevstate.ElevatorState{}
-	msg1 := MakeElevatorMessage(&node1data, &node1state)
+	msg1 := MakeElevatorMessage(&node1data, &node1state, 1, false)
 	nl.AddNodeToList(msg1)
 	if !elevatorArrayContains(nl, "elevator1") {
 		t.Error("Expected elevator1 to be in the list")
@@ -106,7 +114,7 @@ func TestAddNodeToList(t *testing.T) {
 	// 3rd test: add second node
 	node2data := elevmetadata.ElevMetaData{"sodicmxzxj", "0.0.0.0", 9999, "elevator2"}
 	node2state := elevstate.ElevatorState{}
-	msg2 := MakeElevatorMessage(&node2data, &node2state)
+	msg2 := MakeElevatorMessage(&node2data, &node2state, 2, false)
 	nl.AddNodeToList(msg2)
 	if !elevatorArrayContains(nl, "elevator1") || !elevatorArrayContains(nl, "elevator2") {
 		t.Error("Expected both elevator1 and elevator2 to be in the list")
@@ -136,4 +144,89 @@ func TestAddNodeToList(t *testing.T) {
 		t.Error("Expected elevator2 to remain in the list")
 	}
 
+}
+
+func TestAckResponse(t *testing.T) {
+	// Use IPv4 binding.
+	meta := elevmetadata.ElevMetaData{
+		SoftwareVersion: "smj2acjkvv4h1zkwjz2ocsn2lkfrjmzf9qn4i2m3",
+		IpAddress:       "127.0.0.1", // Force IPv4 binding.
+		PortNumber:      9999,
+		Identifier:      "uwvvblrtct",
+	}
+	var dummyState elevstate.ElevatorState
+
+	inChan := make(chan elevstate.ElevatorState)
+	outChan := make(chan elevstate.ElevatorState)
+
+	listener := NewElevNetListen(&meta, &dummyState, inChan, outChan)
+	// Buffer the broadcast channel to avoid blocking.
+	listener.ElevatorsFoundOnNetwork = make(chan ElevatorMessage, 10)
+
+	err := listener.Start()
+	if err != nil {
+		t.Fatalf("Failed to start listener: %v", err)
+	}
+	// Allow some time for the listener goroutines to initialize.
+	time.Sleep(100 * time.Millisecond)
+
+	localAddrStr := listener.conn.LocalAddr().String()
+	t.Logf("Listener bound to: %s", localAddrStr)
+
+	// Force IPv4 for the client.
+	clientAddr, err := net.ResolveUDPAddr("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to resolve client address: %v", err)
+	}
+	serverAddr, err := net.ResolveUDPAddr("udp4", localAddrStr)
+	if err != nil {
+		t.Fatalf("Failed to resolve server address: %v", err)
+	}
+	clientConn, err := net.DialUDP("udp4", clientAddr, serverAddr)
+	if err != nil {
+		t.Fatalf("Failed to dial UDP: %v", err)
+	}
+	defer clientConn.Close()
+
+	// Create a test ElevatorMessage with AckMsg.Acknowledged false and a known ID (42).
+	testMsg := ElevatorMessage{
+		ElevatorData:  elevmetadata.ElevMetaData{}, // Dummy data.
+		ElevatorState: dummyState,
+		AckMsg:        MakeAckMessage(42, false),
+	}
+
+	jsonData, err := json.Marshal(testMsg)
+	if err != nil {
+		t.Fatalf("Failed to marshal test message: %v", err)
+	}
+
+	_, err = clientConn.Write(jsonData)
+	if err != nil {
+		t.Fatalf("Failed to send test message: %v", err)
+	}
+
+	ackBuffer := make([]byte, BUFFER_LENGTH)
+	clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	n, addr, err := clientConn.ReadFromUDP(ackBuffer)
+	if err != nil {
+		t.Fatalf("Failed to read ACK: %v", err)
+	}
+	t.Logf("Received response from: %s", addr.String())
+
+	var ackResp ElevatorMessage
+	err = json.Unmarshal(ackBuffer[:n], &ackResp)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal ACK: %v", err)
+	}
+
+	if !ackResp.AckMsg.Acknowledged {
+		t.Errorf("Expected ACK, but Acknowledged field is false")
+	}
+	if ackResp.AckMsg.ID != 42 {
+		t.Errorf("Expected ACK ID 42, got %d", ackResp.AckMsg.ID)
+	}
+
+	if err := listener.Stop(); err != nil {
+		t.Errorf("Error stopping listener: %v", err)
+	}
 }
