@@ -18,8 +18,8 @@ var Log = logger.GetLogger()
 
 // Constants for timing.
 const (
-	ACK_PERIOD               = 400 * time.Millisecond
-	RETRANSMISSION_THRESHOLD = 700 * time.Millisecond
+	ACK_PERIOD               = 500 * time.Millisecond
+	RETRANSMISSION_THRESHOLD = 1000 * time.Millisecond
 	MAX_RETRIES              = 5
 	//BUFFER_LENGTH            = 1024
 )
@@ -86,7 +86,7 @@ func NewElevNetBroadcast(metaData *elevmetadata.ElevMetaData, elevatorState *ele
 		elevatorState:   elevatorState,
 		stateInChannel:  stateInChannel,
 		stateOutChannel: stateOutChannel,
-		ackChan:         make(chan AckMessage, 100),
+		ackChan:         make(chan AckMessage, 10000),
 		ackRegistry:     make(map[int]chan AckMessage),
 		msgQueue:        make(chan ElevatorMessage, 100),
 	}
@@ -124,7 +124,7 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 	}
 	enb.broadCastingPeriod = broadcastPeriod
 
-	udpAddress, err := net.ResolveUDPAddr("udp", enb.metaData.GetIPAddressPort())
+	udpAddress, err := net.ResolveUDPAddr("udp", "10.100.23.255:9999")
 	if err != nil {
 		return fmt.Errorf("error resolving UDP Address: %v", err)
 	}

@@ -11,8 +11,8 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 )
 
-const ConnectionCheck = 200 * time.Millisecond
-const WaitForReconnection = 500 * time.Millisecond
+const ConnectionCheck = 500 * time.Millisecond
+const WaitForReconnection = 1000 * time.Millisecond
 
 // ElevatorListObject holds a received message and its status.
 type ElevatorListObject struct {
@@ -48,21 +48,21 @@ func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *el
 		conn:                    nil,
 		elevMetaData:            elevMetaData,
 		ElevatorState:           elevatorState,
-		ackChan:                 make(chan AckMessage, 100),
+		ackChan:                 make(chan AckMessage, 10000),
 	}
 }
 
 // Start starts the listener by binding to the UDP address and launching goroutines.
 func (enl *ElevNetListen) Start() error {
-	udpAddress, err := net.ResolveUDPAddr("udp", enl.elevMetaData.GetIPAddressPort())
+	localAddr, err := net.ResolveUDPAddr("udp", "10.100.23.255:9999") // or "0.0.0.0:9999"
 	if err != nil {
-		return fmt.Errorf("error resolving UDP Address: %v", err)
+		return fmt.Errorf("error resolving local UDP address: %v", err)
+	}
+	enl.conn, err = net.ListenUDP("udp", localAddr)
+	if err != nil {
+		return fmt.Errorf("error listening on UDP: %v", err)
 	}
 
-	enl.conn, err = net.ListenUDP("udp", udpAddress)
-	if err != nil {
-		return fmt.Errorf("error creating UDP Socket: %v", err)
-	}
 	listenBuffer := make([]byte, BUFFER_LENGTH)
 	enl.listening = true
 	Log.Info().Msgf("Started listening")
