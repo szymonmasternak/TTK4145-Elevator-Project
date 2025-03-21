@@ -109,6 +109,7 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 				case elevevent.RequestFloorEvent:
 					Log.Error().Msgf("RequestFloorEvent should not occur")
 				}
+				es.BroadcastState()
 			default:
 				if time.Now().After(es.doorOpenTime.Add(es.doorOpenDuration)) {
 					if es.Behaviour == elevconsts.DoorOpen {

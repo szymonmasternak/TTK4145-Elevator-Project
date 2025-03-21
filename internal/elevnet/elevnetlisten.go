@@ -65,6 +65,7 @@ func (enl *ElevNetListen) Start() error {
 	}
 	listenBuffer := make([]byte, BUFFER_LENGTH)
 	enl.listening = true
+	Log.Info().Msgf("Started listening")
 
 	go func() {
 		for {
@@ -127,6 +128,22 @@ func (enl *ElevNetListen) Start() error {
 		}
 	}()
 
+	go func() {
+		for {
+			select {
+			case msg := <-enl.ElevatorsFoundOnNetwork:
+				// Call your AddNodeToList() here
+				enl.AddNodeToList(msg)
+				Log.Info().Msg("I see the list")
+			case val := <-enl.startStopCh:
+				if val == 0 {
+					Log.Info().Msg("Stopping Listening task...")
+					// Clean up, then return
+					return
+				}
+			}
+		}
+	}()
 	go func() {
 		defer enl.conn.Close()
 		for {
