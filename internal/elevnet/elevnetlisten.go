@@ -35,6 +35,7 @@ type ElevNetListen struct {
 	conn          *net.UDPConn               // UDP connection used for listening
 	elevMetaData  *elevmetadata.ElevMetaData // metadata for this elevator
 	elevatorArray []ElevatorListObject
+	elevatorArrayMtx sync.Mutex
 	ElevatorState *elevstate.ElevatorState
 	ackChan       chan AckMessage // Channel for ACKs
 }
@@ -172,6 +173,8 @@ func (enl *ElevNetListen) Stop() error {
 }
 
 func (nl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
+	nl.elevatorArrayMtx.Lock()
+	defer nl.elevatorArrayMtx.Unlock()
 	var elavatorFound bool
 	elavatorFound = false
 	for i := 0; i < len(nl.elevatorArray); i++ {
@@ -212,8 +215,8 @@ func (nl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
 }
 
 func (nl *ElevNetListen) GetElevatorMessageMap() map[string]ElevatorMessage {
-    nl.mu.Lock()
-    defer nl.mu.Unlock()
+    nl.elevatorArrayMtx.Lock()
+    defer nl.elevatorArrayMtx.Unlock()
 
     messages := make(map[string]ElevatorMessage)
     for _, obj := range nl.elevatorArray {

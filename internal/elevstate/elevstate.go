@@ -31,15 +31,8 @@ type ElevatorState struct {
 	commandChannel      chan<- elevcmd.ElevatorCommand
 	stateInChannel      <-chan ElevatorState
 	stateOutChannel     chan<- ElevatorState
-	stateInChannel      <-chan ElevatorState
-	stateOutChannel     chan<- ElevatorState
 }
 
-func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateInChannel <-chan ElevatorState, stateOutChannel chan<- ElevatorState) *ElevatorState {
-	clearRequestVariant := elevconsts.InDirn
-	if clearUpDownOnArrival {
-		clearRequestVariant = elevconsts.All
-	}
 
 func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateInChannel <-chan ElevatorState, stateOutChannel chan<- ElevatorState) *ElevatorState {
 	clearRequestVariant := elevconsts.InDirn
@@ -52,12 +45,9 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 		Dirn:                elevconsts.Stop,
 		Behaviour:           elevconsts.Idle,
 		clearRequestVariant: clearRequestVariant,
-		clearRequestVariant: clearRequestVariant,
 		doorOpenDuration:    time.Second * 3,
 		eventChannel:        eventChannel,
 		commandChannel:      commandChannel,
-		stateInChannel:      stateInChannel,
-		stateOutChannel:     stateOutChannel,
 		stateInChannel:      stateInChannel,
 		stateOutChannel:     stateOutChannel,
 		stopButton:          false,
@@ -69,20 +59,7 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 
 func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) error {
 	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.RequestFloorCommand{}}
-	return elevatorState
-}
 
-func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) error {
-	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.RequestFloorCommand{}}
-
-	timeout := time.After(500 * time.Millisecond)
-	select {
-	case <-ctx.Done():
-		Log.Warn().Msgf("ElevatorState Start has been signaled to stop")
-		return nil
-	case <-timeout:
-		return errors.New("ElevatorState Start timed out")
-	case event := <-es.eventChannel:
 	timeout := time.After(500 * time.Millisecond)
 	select {
 	case <-ctx.Done():
@@ -100,7 +77,6 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 	}
 
 	if es.Floor == -1 {
-	if es.Floor == -1 {
 		Log.Info().Msgf("Elevator initialized between floors, moving down to nearest floor")
 		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Down}}
 		es.Dirn = elevconsts.Down
@@ -116,17 +92,8 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 	waitGroup.Add(1)
 	go func() {
 		defer waitGroup.Done()
-		defer waitGroup.Done()
 		for {
 			select {
-			case <-ctx.Done():
-				Log.Warn().Msgf("ElevatorState Go routine has been signaled to stop")
-				if es.Dirn != elevconsts.Stop {
-					Log.Warn().Msgf("Elevator is not stopped, stopping it")
-					es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Stop}}
-				}
-				return
-			case event := <-es.eventChannel:
 			case <-ctx.Done():
 				Log.Warn().Msgf("ElevatorState Go routine has been signaled to stop")
 				if es.Dirn != elevconsts.Stop {
@@ -165,11 +132,7 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 				if time.Now().After(es.doorOpenTime.Add(es.doorOpenDuration)) {
 					if es.Behaviour == elevconsts.DoorOpen {
 						if !es.stopButton {
-				if time.Now().After(es.doorOpenTime.Add(es.doorOpenDuration)) {
-					if es.Behaviour == elevconsts.DoorOpen {
-						if !es.stopButton {
 							Log.Warn().Msgf("Door timeout Event")
-							es.handleDoorTimeout()
 							es.handleDoorTimeout()
 						}
 					}
@@ -177,7 +140,6 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 			}
 		}
 	}()
-	return nil
 	return nil
 }
 
