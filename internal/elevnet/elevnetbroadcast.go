@@ -16,22 +16,24 @@ import (
 
 var Log = logger.GetLogger()
 
-// Constants for timing.
+// Constants
 const (
 	ACK_PERIOD               = 400 * time.Millisecond
 	RETRANSMISSION_THRESHOLD = 700 * time.Millisecond
 	MAX_RETRIES              = 5
-	//BUFFER_LENGTH            = 1024
+	//BUFFER_LENGTH            = 65535 // or however large you'd like
 )
 
-// AckMessage carries an acknowledgment, including when it was sent.
+// Use a well-known multicast group and port.
+// 224.0.0.x is within the local administrative scope.
+//const MULTICAST_ADDRESS = "224.0.0.1:9999"
+
 type AckMessage struct {
 	ID           int
 	Acknowledged bool
 	TimeSent     time.Time
 }
 
-// ElevatorMessage carries the elevator state plus its ack info.
 type ElevatorMessage struct {
 	AckMsg        AckMessage
 	ElevatorData  elevmetadata.ElevMetaData
@@ -39,8 +41,6 @@ type ElevatorMessage struct {
 }
 
 func MakeAckMessage(id int, ack bool) AckMessage {
-	// This function is used by the broadcaster when constructing a non-ACK message.
-	// (The listener will create a fresh ACK with time.Now().)
 	return AckMessage{
 		ID:           id,
 		Acknowledged: ack,
@@ -56,7 +56,7 @@ func MakeElevatorMessage(meta *elevmetadata.ElevMetaData, state *elevstate.Eleva
 	}
 }
 
-// ElevNetBroadcast encapsulates the broadcast logic.
+// ElevNetBroadcast handles sending elevator state and receiving ACKs.
 type ElevNetBroadcast struct {
 	broadcasting       bool
 	startStopCh        chan int
@@ -68,17 +68,19 @@ type ElevNetBroadcast struct {
 	stateInChannel  <-chan elevstate.ElevatorState
 	stateOutChannel <-chan elevstate.ElevatorState
 
-	// ackChan is still used as a fallback, but we now use an ackRegistry.
-	ackChan chan AckMessage
-
-	// ackRegistry maps message IDs to channels waiting for ACKs.
+	ackChan     chan AckMessage
 	ackRegistry map[int]chan AckMessage
 	registryMu  sync.Mutex
 
 	msgQueue chan ElevatorMessage
 }
 
-func NewElevNetBroadcast(metaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState) *ElevNetBroadcast {
+func NewElevNetBroadcast(
+	metaData *elevmetadata.ElevMetaData,
+	elevatorState *elevstate.ElevatorState,
+	stateInChannel <-chan elevstate.ElevatorState,
+	stateOutChannel <-chan elevstate.ElevatorState,
+) *ElevNetBroadcast {
 	return &ElevNetBroadcast{
 		broadcasting:    false,
 		startStopCh:     make(chan int),
@@ -92,7 +94,6 @@ func NewElevNetBroadcast(metaData *elevmetadata.ElevMetaData, elevatorState *ele
 	}
 }
 
-// waitForAck registers a dedicated channel for the given messageID and returns it.
 func (enb *ElevNetBroadcast) waitForAck(messageID int) <-chan AckMessage {
 	ch := make(chan AckMessage, 1)
 	enb.registryMu.Lock()
@@ -101,20 +102,20 @@ func (enb *ElevNetBroadcast) waitForAck(messageID int) <-chan AckMessage {
 	return ch
 }
 
-// deliverAck looks up the waiting channel for messageID and sends the ack.
 func (enb *ElevNetBroadcast) deliverAck(ack AckMessage) {
 	enb.registryMu.Lock()
 	if ch, ok := enb.ackRegistry[ack.ID]; ok {
-		Log.Debug().Msgf("Delivering ACK for message ID %d with timestamp %s", ack.ID, ack.TimeSent.Format(time.RFC3339Nano))
+		Log.Debug().Msgf("Delivering ACK for message ID %d", ack.ID)
 		ch <- ack
 		delete(enb.ackRegistry, ack.ID)
 	} else {
-		Log.Debug().Msgf("No waiting channel for ACK with message ID %d", ack.ID)
+		Log.Debug().Msgf("No waiting channel for ACK message ID %d", ack.ID)
 	}
 	enb.registryMu.Unlock()
 }
 
-// Start begins the broadcast process.
+// Start: now binds to a multicast group so multiple processes on the same
+// machine/network can share the same port (9999) and all receive each other's packets.
 func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 	if enb.broadcasting {
 		return errors.New("nodeBroadcast is already broadcasting")
@@ -124,23 +125,26 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 	}
 	enb.broadCastingPeriod = broadcastPeriod
 
-	udpAddress, err := net.ResolveUDPAddr("udp", enb.metaData.GetIPAddressPort())
+	// 1. Listen on the multicast address
+	groupAddr, err := net.ResolveUDPAddr("udp", MULTICAST_ADDRESS)
 	if err != nil {
-		return fmt.Errorf("error resolving UDP Address: %v", err)
+		return fmt.Errorf("error resolving multicast address: %v", err)
 	}
-
-	enb.conn, err = net.DialUDP("udp", nil, udpAddress)
+	enb.conn, err = net.ListenMulticastUDP("udp", nil, groupAddr)
 	if err != nil {
-		return fmt.Errorf("error creating UDP Socket: %v", err)
+		return fmt.Errorf("error creating multicast socket: %v", err)
 	}
-	enb.conn.SetWriteBuffer(BUFFER_LENGTH)
+	if err := enb.conn.SetReadBuffer(BUFFER_LENGTH); err != nil {
+		return fmt.Errorf("error setting read buffer: %v", err)
+	}
 
 	enb.broadcasting = true
 
-	// 1. Producer Goroutine.
+	// 2. Producer goroutine: pushes ElevatorMessages onto msgQueue periodically.
 	go func() {
 		timeTicker := time.NewTicker(enb.broadCastingPeriod)
 		defer timeTicker.Stop()
+
 		index := 0
 		var latestState elevstate.ElevatorState
 
@@ -151,14 +155,17 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 					return
 				}
 				latestState = updatedState
+
 			case <-timeTicker.C:
+				// Create a new non-ACK message
 				msg := ElevatorMessage{
 					ElevatorData:  *enb.metaData,
 					ElevatorState: latestState,
-					AckMsg:        MakeAckMessage(index, false), // non-ACK message
+					AckMsg:        MakeAckMessage(index, false),
 				}
 				enb.msgQueue <- msg
 				index++
+
 			case val := <-enb.startStopCh:
 				if val == 0 {
 					Log.Info().Msg("Stopping message production...")
@@ -168,57 +175,57 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 		}
 	}()
 
-	// 2. Sender Goroutine.
+	// 3. Sender goroutine: sends the queued messages to the multicast address, then waits for ACK.
 	go func() {
 		for {
 			select {
 			case msg := <-enb.msgQueue:
+				// Marshal the message
 				jsonData, err := json.Marshal(msg)
 				if err != nil {
 					Log.Error().Msgf("Error marshalling JSON: %v", err)
 					continue
 				}
-				_, err = enb.conn.Write(jsonData)
+
+				// Send to the same multicast group
+				_, err = enb.conn.WriteToUDP(jsonData, groupAddr)
 				if err != nil {
-					Log.Error().Msgf("Error writing to UDP Socket: %v", err)
+					Log.Error().Msgf("Error writing to multicast socket: %v", err)
 					continue
 				}
-				Log.Debug().Msgf("Sent Packet: %v", string(jsonData))
+				Log.Debug().Msgf("Sent Packet: %s", string(jsonData))
 
+				// Wait for ACK
 				ackCh := enb.waitForAck(msg.AckMsg.ID)
 				retries := 0
+			RETRY_LOOP:
 				for {
 					ctx, cancel := context.WithTimeout(context.Background(), RETRANSMISSION_THRESHOLD)
 					select {
 					case ack := <-ackCh:
-						if ack.TimeSent.IsZero() {
-							Log.Error().Msgf("Received ACK with zero timestamp for message ID %d", ack.ID)
-							// We treat this as a timeout.
-						}
+						// If we get an ACK from ourselves or from the correct ID, handle it
 						rtt := time.Since(ack.TimeSent)
-						if rtt > ACK_PERIOD {
-							Log.Warn().Msgf("Delayed ACK for message ID %d: RTT %v; retransmitting", ack.ID, rtt)
-							msg.AckMsg.TimeSent = time.Now()
-							enb.msgQueue <- msg
-						} else {
-							Log.Debug().Msgf("ACK received for message ID %d in %v", ack.ID, rtt)
-						}
+						Log.Debug().Msgf("ACK received for message ID %d in %v", ack.ID, rtt)
 						cancel()
-						break
+						break RETRY_LOOP
+
 					case <-ctx.Done():
 						cancel()
 						retries++
 						if retries >= MAX_RETRIES {
 							Log.Error().Msgf("Max retries reached for message ID %d; giving up", msg.AckMsg.ID)
-							break
+							break RETRY_LOOP
 						}
 						Log.Warn().Msgf("Timeout waiting for ACK for message ID %d; retransmitting (retry %d)", msg.AckMsg.ID, retries)
-						msg.AckMsg.TimeSent = time.Now()
-						enb.msgQueue <- msg
+						_, err = enb.conn.WriteToUDP(jsonData, groupAddr)
+						if err != nil {
+							Log.Error().Msgf("Error retransmitting to multicast: %v", err)
+							break RETRY_LOOP
+						}
 						ackCh = enb.waitForAck(msg.AckMsg.ID)
 					}
-					break
 				}
+
 			case val := <-enb.startStopCh:
 				if val == 0 {
 					Log.Info().Msg("Stopping sender goroutine...")
@@ -228,7 +235,8 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 		}
 	}()
 
-	// 3. ACK Listener Goroutine.
+	// 4. ACK listener goroutine: receives messages from the same multicast socket
+	//    and delivers them if they're ACKs for *our* message ID + ElevatorData.Identifier.
 	go func() {
 		ackBuffer := make([]byte, BUFFER_LENGTH)
 		for {
@@ -237,31 +245,31 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 				Log.Error().Msgf("Error reading from UDP: %v", err)
 				continue
 			}
-			// Unmarshal into an ElevatorMessage, then extract the AckMsg.
 			var elevMsg ElevatorMessage
 			if err := json.Unmarshal(ackBuffer[:n], &elevMsg); err != nil {
 				Log.Error().Msgf("Error unmarshalling ElevatorMessage: %v", err)
 				continue
 			}
-			if elevMsg.ElevatorData.Identifier != enb.metaData.Identifier {
-				Log.Debug().Msgf("Ignoring ACK from elevator %s, expected %s",
-					elevMsg.ElevatorData.Identifier, enb.metaData.Identifier)
-				continue // Skip ACKs from unexpected sources.
+
+			// If it's an ACK, check if it's meant for our ID.
+			if elevMsg.AckMsg.Acknowledged {
+				// Optional: filter by "elevMsg.ElevatorData.Identifier == enb.metaData.Identifier"
+				// if you only want to handle ACKs intended specifically for us.
+				enb.deliverAck(elevMsg.AckMsg)
 			}
-			// Deliver the ACK.
-			enb.deliverAck(elevMsg.AckMsg)
 		}
 	}()
 
-	Log.Info().Msg("Started broadcasting")
+	Log.Info().Msg("Started broadcasting via multicast")
 	return nil
 }
 
+// Stop ends all the goroutines and closes the connection.
 func (enb *ElevNetBroadcast) Stop() error {
 	if !enb.broadcasting {
 		return errors.New("cannot stop broadcasting if nodeBroadcast is not broadcasting")
 	}
 	enb.startStopCh <- 0
 	enb.broadcasting = false
-	return nil
+	return enb.conn.Close()
 }

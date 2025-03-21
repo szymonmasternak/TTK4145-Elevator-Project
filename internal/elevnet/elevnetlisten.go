@@ -13,6 +13,7 @@ import (
 
 const ConnectionCheck = 200 * time.Millisecond
 const WaitForReconnection = 500 * time.Millisecond
+const MULTICAST_ADDRESS = "224.0.0.1:9999"
 
 // ElevatorListObject holds a received message and its status.
 type ElevatorListObject struct {
@@ -54,20 +55,31 @@ func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *el
 
 // Start starts the listener by binding to the UDP address and launching goroutines.
 func (enl *ElevNetListen) Start() error {
-	udpAddress, err := net.ResolveUDPAddr("udp", enl.elevMetaData.GetIPAddressPort())
+	groupAddr, err := net.ResolveUDPAddr("udp", MULTICAST_ADDRESS)
 	if err != nil {
-		return fmt.Errorf("error resolving UDP Address: %v", err)
+		return fmt.Errorf("error resolving multicast address: %v", err)
 	}
 
-	enl.conn, err = net.ListenUDP("udp", udpAddress)
+	// Use ListenMulticastUDP instead of ListenUDP
+	enl.conn, err = net.ListenMulticastUDP("udp", nil, groupAddr)
 	if err != nil {
-		return fmt.Errorf("error creating UDP Socket: %v", err)
+		return fmt.Errorf("error setting up multicast listener: %v", err)
 	}
+
+	// Optionally set the read buffer
+	if err := enl.conn.SetReadBuffer(BUFFER_LENGTH); err != nil {
+		return fmt.Errorf("error setting read buffer: %v", err)
+	}
+
 	listenBuffer := make([]byte, BUFFER_LENGTH)
 	enl.listening = true
 
 	go func() {
 		for {
+
+			// addr, _ := net.ResolveUDPAddr("udp", "224.0.0.1:9999")
+			// conn, _ := net.ListenMulticastUDP("udp", nil, addr)
+
 			n, addr, err := enl.conn.ReadFromUDP(listenBuffer)
 			if err != nil {
 				// If the connection is closed, exit gracefully.
@@ -127,6 +139,22 @@ func (enl *ElevNetListen) Start() error {
 		}
 	}()
 
+	go func() {
+		for {
+			select {
+			case msg := <-enl.ElevatorsFoundOnNetwork:
+				// Call your AddNodeToList() here
+				enl.AddNodeToList(msg)
+				Log.Info().Msg("I see the list")
+			case val := <-enl.startStopCh:
+				if val == 0 {
+					Log.Info().Msg("Stopping Listening task...")
+					// Clean up, then return
+					return
+				}
+			}
+		}
+	}()
 	go func() {
 		defer enl.conn.Close()
 		for {
