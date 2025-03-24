@@ -52,7 +52,7 @@ func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *el
 
 // Start starts the listener by binding to the UDP address and launching goroutines.
 func (enl *ElevNetListen) Start() error {
-	localAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:9999")
+	localAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:64916")
 	if err != nil {
 		return fmt.Errorf("error resolving local UDP address: %v", err)
 	}
