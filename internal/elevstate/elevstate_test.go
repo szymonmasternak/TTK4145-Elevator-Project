@@ -80,6 +80,13 @@ func TestElevatorStateInitialisation(t *testing.T) {
 	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	floorStart := 3
+
+	go func() {
+		for {
+			<-stateOutChannel
+		}
+	}()
+
 	go func() {
 		time.Sleep(TEST_DELAY)
 		eventChannel <- elevevent.ElevatorEvent{Value: elevevent.RequestFloorEvent{Floor: floorStart}}
@@ -117,6 +124,13 @@ func TestNewElevatorStateCommands(t *testing.T) {
 	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	floorStart := 3
+
+	go func() {
+		for {
+			<-stateOutChannel
+		}
+	}()
+
 	go func() {
 		time.Sleep(TEST_DELAY)
 		eventChannel <- elevevent.ElevatorEvent{Value: elevevent.RequestFloorEvent{Floor: floorStart}}
@@ -212,6 +226,13 @@ func TestDoorOpenDuration(t *testing.T) {
 	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	floorStart := 1
+
+	go func() {
+		for {
+			<-stateOutChannel
+		}
+	}()
+
 	go func() {
 		time.Sleep(TEST_DELAY)
 		eventChannel <- elevevent.ElevatorEvent{Value: elevevent.RequestFloorEvent{Floor: floorStart}}
@@ -357,6 +378,13 @@ func TestStopButton(t *testing.T) {
 
 	floorStart := 0
 	floorButtonRequest := 3
+
+	go func() {
+		for {
+			<-stateOutChannel
+		}
+	}()
+
 	go func() {
 		time.Sleep(TEST_DELAY)
 		eventChannel <- elevevent.ElevatorEvent{Value: elevevent.RequestFloorEvent{Floor: floorStart}}
@@ -420,6 +448,13 @@ func TestCabCall(t *testing.T) {
 
 	floorStart := 0
 	floorButtonRequest := 3
+
+	go func() {
+		for {
+			<-stateOutChannel
+		}
+	}()
+
 	go func() {
 		time.Sleep(TEST_DELAY)
 		eventChannel <- elevevent.ElevatorEvent{Value: elevevent.FloorSensorEvent{Floor: floorStart}}
@@ -489,6 +524,13 @@ func TestHallCall(t *testing.T) {
 
 	floorStart := 1
 	floorButtonRequest := 2
+
+	go func() {
+		for {
+			<-stateOutChannel
+		}
+	}()
+
 	go func() {
 		time.Sleep(TEST_DELAY)
 		eventChannel <- elevevent.ElevatorEvent{Value: elevevent.RequestFloorEvent{Floor: floorStart}}
@@ -554,6 +596,13 @@ func TestFullJourney(t *testing.T) {
 	floorStart := 0
 	floorButtonRequest := 2
 	floorButtonRequest2 := 3
+
+	go func() {
+		for {
+			<-stateOutChannel
+		}
+	}()
+
 	go func() {
 		time.Sleep(TEST_DELAY)
 		eventChannel <- elevevent.ElevatorEvent{Value: elevevent.RequestFloorEvent{Floor: floorStart}}
@@ -646,6 +695,13 @@ func TestInitialisationBetweenFloors(t *testing.T) {
 	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 
 	floorStart := -1
+
+	go func() {
+		for {
+			<-stateOutChannel
+		}
+	}()
+
 	go func() {
 		time.Sleep(TEST_DELAY)
 		eventChannel <- elevevent.ElevatorEvent{Value: elevevent.RequestFloorEvent{Floor: floorStart}}
