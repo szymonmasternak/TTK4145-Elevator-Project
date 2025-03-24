@@ -3,6 +3,7 @@ package elevator
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
@@ -21,10 +22,10 @@ import (
 var Logger = logger.GetLogger()
 
 const (
-	EVENT_CHANNEL_SIZE     = 10
-	COMMAND_CHANNEL_SIZE   = 1
-	IDENTIFIER_DEFAULT_LEN = 10
-	DEFAULT_DRIVER_ADDRESS = "localhost:15657"
+	EVENT_CHANNEL_SIZE       = 10
+	COMMAND_CHANNEL_SIZE     = 1
+	IDENTIFIER_DEFAULT_LEN   = 10
+	NETWORK_MSG_CHANNEL_SIZE = 1
 )
 
 type Elevator struct {
@@ -35,6 +36,7 @@ type Elevator struct {
 
 	eventChannel   chan elevevent.ElevatorEvent
 	commandChannel chan elevcmd.ElevatorCommand
+	// networkMsgChannel chan elevnet.NetworkMsg
 
 	initialised bool //set to true if initialised via NewElevator Function
 	running     bool
@@ -44,7 +46,7 @@ type Elevator struct {
 	cancelArray    []context.CancelFunc
 }
 
-func NewElevator(identifier string, portNumber uint16, clearUpDownOnArrival bool) *Elevator {
+func NewElevator(identifier string, portNumber uint16, driverIPAddress string, clearUpDownOnArrival bool, udpPort uint16) *Elevator {
 	if identifier == "" {
 		identifier = randomstring.EnglishFrequencyString(IDENTIFIER_DEFAULT_LEN) //this should be random enough
 		Logger.Warn().Msgf("No elevator identifier provided, generated random identifier \"%v\"", identifier)
@@ -55,27 +57,34 @@ func NewElevator(identifier string, portNumber uint16, clearUpDownOnArrival bool
 		IpAddress:       elevutils.GetLocalIP(),
 		PortNumber:      portNumber,
 		Identifier:      identifier,
+		UdpPort:         udpPort,
 	}
 
 	eventChannel := make(chan elevevent.ElevatorEvent, EVENT_CHANNEL_SIZE)
 	commandChannel := make(chan elevcmd.ElevatorCommand, COMMAND_CHANNEL_SIZE)
+	// networkMsgChannel := make(chan elevnet.NetworkMsg, NETWORK_MSG_CHANNEL_SIZE)
 
-	elevIO, err := elevio.NewElevatorIO(DEFAULT_DRIVER_ADDRESS, elevconsts.N_FLOORS, eventChannel, commandChannel)
+	elevIO, err := elevio.NewElevatorIO(driverIPAddress, elevconsts.N_FLOORS, eventChannel, commandChannel)
 	if err != nil {
 		panic("Error Creating ElevIO Object")
 	}
 
+	// elevState := elevstate.NewElevatorState(eventChannel, commandChannel, networkMsgChannel, clearUpDownOnArrival)
+	// elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, networkMsgChannel, elevState)
+
 	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState)
 
 	return &Elevator{
 		MetaData:       elevatorMetadata,
-		Network:        elevnet.NewElevatorNetwork(elevatorMetadata),
+		Network:        elevNetwork,
 		IO:             elevIO,
 		State:          elevState,
 		initialised:    true,
 		running:        false,
 		eventChannel:   eventChannel,
 		commandChannel: commandChannel,
+		// networkMsgChannel: networkMsgChannel,
 	}
 }
 
@@ -102,6 +111,21 @@ func (e *Elevator) Start() {
 	e.waitGroupArray = append(e.waitGroupArray, wgState)
 	e.State.Start(ctxState, wgState)
 	e.cancelArray = append(e.cancelArray, cancelState)
+
+	ctxNetwork, cancelNetwork := context.WithCancel(context.Background())
+	wgNetwork := &sync.WaitGroup{}
+	e.waitGroupArray = append(e.waitGroupArray, wgNetwork)
+	e.Network.Start(ctxNetwork, wgNetwork)
+	e.cancelArray = append(e.cancelArray, cancelNetwork)
+
+	//For Debug
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			num := e.Network.GetNodesConnected()
+			Logger.Info().Msgf("Elevators Connected: %d", num)
+		}
+	}()
 
 	//Todo add other threads
 

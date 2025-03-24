@@ -14,6 +14,7 @@ type ElevMetaData struct {
 	IpAddress       string `json:"ip_address"`
 	PortNumber      uint16 `json:"port_number"`
 	Identifier      string `json:"identifier"`
+	UdpPort         uint16 `json:"udp_port"`
 }
 
 func (elevMetaData *ElevMetaData) String() string {

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"time"
-
 	"github.com/rs/zerolog"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevutils"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
@@ -17,18 +15,18 @@ import (
 var Logger = logger.GetLoggerConfigured(zerolog.DebugLevel)
 
 func main() {
-	identifier, portNumber, clearUpDownOnArrival := elevutils.ProcessCmdArgs()
+	identifier, portNumber, clearUpDownOnArrival, driverIPAddress, udpPort := elevutils.ProcessCmdArgs()
 
 	// Starting Programme
 	Logger.Info().Msg("Starting Elevator Programme")
 
-	elev := elevator.NewElevator(identifier, portNumber, clearUpDownOnArrival)
+	elev := elevator.NewElevator(identifier, portNumber, driverIPAddress, clearUpDownOnArrival, udpPort)
 	elev.Start()
 
 	Logger.Info().Msgf("Elevator: %v", elev.MetaData.String())
 
-	elev.Network.Broadcast.Start(time.Millisecond * 1000)
-	elev.Network.Listen.Start()
+	// elev.Network.Broadcast.Start(time.Millisecond * 1000)
+	// elev.Network.Listen.Start()
 
 	select {}
 }

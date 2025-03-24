@@ -29,9 +29,12 @@ type ElevatorState struct {
 	doorOpenTime        time.Time
 	eventChannel        <-chan elevevent.ElevatorEvent
 	commandChannel      chan<- elevcmd.ElevatorCommand
+	// networkMsgChannel   chan<- elevnet.NetworkMsg
 }
 
+// func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, networkMsgChannel <-chan elevnet.NetworkMsg, clearUpDownOnArrival bool) *ElevatorState {
 func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool) *ElevatorState {
+
 	clearRequestVariant := elevconsts.InDirn
 	if clearUpDownOnArrival {
 		clearRequestVariant = elevconsts.All
@@ -48,6 +51,7 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 		stopButton:          false,
 		obstructionSensor:   false,
 		doorOpenTime:        time.Time{}, //Returns zero value, since we dont know when it was last open
+		// networkMsgChannel:   networkMsgChannel,
 	}
 	return elevatorState
 }
