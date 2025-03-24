@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"syscall"
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
@@ -52,24 +54,47 @@ func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *el
 
 // Start starts the listener by binding to the UDP address and launching goroutines.
 func (enl *ElevNetListen) Start() error {
-	localAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:64916")
+	localAddr, err := net.ResolveUDPAddr("udp", "10.100.23.255:9999")
 	if err != nil {
 		return fmt.Errorf("error resolving local UDP address: %v", err)
 	}
-	enl.conn, err = net.ListenUDP("udp", localAddr)
+
+	// Create UDP socket manually with SO_REUSEADDR
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP)
 	if err != nil {
-		return fmt.Errorf("error listening on UDP: %v", err)
+		return fmt.Errorf("socket error: %v", err)
 	}
+	if err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); err != nil {
+		return fmt.Errorf("setsockopt SO_REUSEADDR error: %v", err)
+	}
+
+	sockaddr := &syscall.SockaddrInet4{Port: localAddr.Port}
+	copy(sockaddr.Addr[:], net.IPv4zero.To4())
+	if err := syscall.Bind(fd, sockaddr); err != nil {
+		return fmt.Errorf("bind error: %v", err)
+	}
+
+	// Convert to *net.UDPConn
+	file := os.NewFile(uintptr(fd), "udp-reuseaddr")
+	c, err := net.FilePacketConn(file)
+	if err != nil {
+		return fmt.Errorf("FilePacketConn error: %v", err)
+	}
+	file.Close()
+	conn, ok := c.(*net.UDPConn)
+	if !ok {
+		return fmt.Errorf("failed to cast to UDPConn")
+	}
+	enl.conn = conn
 
 	listenBuffer := make([]byte, BUFFER_LENGTH)
 	enl.listening = true
-	Log.Info().Msgf("Started listening")
+	Log.Info().Msgf("Started listening on shared port")
 
 	go func() {
 		for {
 			n, _, err := enl.conn.ReadFromUDP(listenBuffer)
 			if err != nil {
-				// If the connection is closed, exit gracefully.
 				if opErr, ok := err.(*net.OpError); ok && opErr.Err.Error() == "use of closed network connection" {
 					return
 				}
@@ -99,6 +124,7 @@ func (enl *ElevNetListen) Start() error {
 			}
 		}
 	}()
+
 	go func() {
 		defer enl.conn.Close()
 		for {
