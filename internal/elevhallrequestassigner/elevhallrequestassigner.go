@@ -73,7 +73,6 @@ func (assigner *HallRequestAssigner) Start(ctx context.Context, waitGroup *sync.
 					Log.Debug().Msgf("HallRequestAssigner got optimal hall requests")
 					optimalLocalRequests := getOptimalLocalRequests(optimalHallRequests, localState.ConfirmedRequests, assigner.localID)
 					assigner.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.UpdateHallRequestsEvent{Requests: optimalLocalRequests}}
-
 				}
 
 				// if localState.Requests != optimalLocalRequests {

@@ -20,19 +20,19 @@ type ElevatorState struct {
 	Floor             int
 	Dirn              elevconsts.Dirn
 	ConfirmedRequests [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int
-	RequestStates     [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]requestconfirmation.RequestState
 	Behaviour         elevconsts.ElevatorBehaviour
 
 	//Internal Variables
-	clearRequestVariant elevconsts.ClearRequestVariant
-	obstructionSensor   bool
-	stopButton          bool
-	doorOpenDuration    time.Duration
-	doorOpenTime        time.Time
-	eventChannel        <-chan elevevent.ElevatorEvent
-	commandChannel      chan<- elevcmd.ElevatorCommand
-	stateInChannel      <-chan ElevatorState
-	stateOutChannel     chan<- ElevatorState
+	clearRequestVariant       elevconsts.ClearRequestVariant
+	obstructionSensor         bool
+	stopButton                bool
+	doorOpenDuration          time.Duration
+	doorOpenTime              time.Time
+	eventChannel              <-chan elevevent.ElevatorEvent
+	commandChannel            chan<- elevcmd.ElevatorCommand
+	stateInChannel            <-chan ElevatorState
+	stateOutChannel           chan<- ElevatorState
+	unconfirmedRequestChannel chan requestconfirmation.RequestMessage
 }
 
 func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateInChannel <-chan ElevatorState, stateOutChannel chan<- ElevatorState) *ElevatorState {
@@ -199,14 +199,26 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 		if es.RequestsShouldClearImmediately(btnFloor, btnType) {
 			es.doorOpenTime = time.Now().Add(es.doorOpenDuration)
 		} else {
-			es.ConfirmedRequests[btnFloor][btnType] = 1
+			es.unconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+				Floor:  btnFloor,
+				Button: btnType,
+				State:  requestconfirmation.REQ_Unconfirmed,
+			}
 		}
 
 	case elevconsts.Moving:
-		es.ConfirmedRequests[btnFloor][btnType] = 1
+		es.unconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+			Floor:  btnFloor,
+			Button: btnType,
+			State:  requestconfirmation.REQ_Unconfirmed,
+		}
 
 	case elevconsts.Idle:
-		es.ConfirmedRequests[btnFloor][btnType] = 1
+		es.unconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+			Floor:  btnFloor,
+			Button: btnType,
+			State:  requestconfirmation.REQ_Unconfirmed,
+		}
 		es.Dirn, es.Behaviour = es.RequestsChooseDirection()
 
 		switch es.Behaviour {

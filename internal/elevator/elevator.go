@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevevent"
@@ -14,6 +15,7 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevutils"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requestconfirmation"
 
 	"github.com/xyproto/randomstring"
 )
@@ -31,6 +33,7 @@ type Elevator struct {
 	Network             *elevnet.ElevatorNetwork
 	IO                  *elevio.ElevatorIO
 	State               *elevstate.ElevatorState
+	RequestStates       *requestconfirmation.RequestArray
 	HallRequestAssigner *elevhallrequestassigner.HallRequestAssigner
 
 	eventChannel    chan elevevent.ElevatorEvent

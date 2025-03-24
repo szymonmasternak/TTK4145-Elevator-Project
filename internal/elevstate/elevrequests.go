@@ -1,6 +1,9 @@
 package elevstate
 
-import "github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
+import (
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requestconfirmation"
+)
 
 func (es *ElevatorState) requestsAbove() bool {
 	for f := es.Floor + 1; f < elevconsts.N_FLOORS; f++ {
@@ -101,24 +104,53 @@ func (es *ElevatorState) RequestsClearAtCurrentFloor() {
 	switch es.clearRequestVariant {
 	case elevconsts.All:
 		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
-			es.ConfirmedRequests[es.Floor][btn] = 0
+			es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
+				Floor: es.Floor,
+				Button: elevconsts.Button(btn),
+				State: requestconfirmation.REQ_Completed,
+			}
+
 		}
 	case elevconsts.InDirn:
 		es.ConfirmedRequests[es.Floor][elevconsts.Cab] = 0
 		switch es.Dirn {
 		case elevconsts.Up:
 			if !es.requestsAbove() && es.ConfirmedRequests[es.Floor][elevconsts.HallUp] == 0 {
-				es.ConfirmedRequests[es.Floor][elevconsts.HallDown] = 0
+				es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
+					Floor: es.Floor,
+					Button: elevconsts.HallDown,
+					State: requestconfirmation.REQ_Completed,
+				}
 			}
-			es.ConfirmedRequests[es.Floor][elevconsts.HallUp] = 0
+			es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
+				Floor: es.Floor,
+				Button: elevconsts.HallUp,
+				State: requestconfirmation.REQ_Completed,
+			}
 		case elevconsts.Down:
 			if !es.requestsBelow() && es.ConfirmedRequests[es.Floor][elevconsts.HallDown] == 0 {
-				es.ConfirmedRequests[es.Floor][elevconsts.HallUp] = 0
+				es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
+					Floor: es.Floor,
+					Button: elevconsts.HallUp,
+					State: requestconfirmation.REQ_Completed,
+				}
 			}
-			es.ConfirmedRequests[es.Floor][elevconsts.HallDown] = 0
+			es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
+				Floor: es.Floor,
+				Button: elevconsts.HallDown,
+				State: requestconfirmation.REQ_Completed,
+			}
 		case elevconsts.Stop:
-			es.ConfirmedRequests[es.Floor][elevconsts.HallUp] = 0
-			es.ConfirmedRequests[es.Floor][elevconsts.HallDown] = 0
+			es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
+				Floor: es.Floor,
+				Button: elevconsts.HallUp,
+				State: requestconfirmation.REQ_Completed,
+			}
+			es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
+				Floor: es.Floor,
+				Button: elevconsts.HallDown,
+				State: requestconfirmation.REQ_Completed,
+			}
 		}
 	}
 }
