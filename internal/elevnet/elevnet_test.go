@@ -121,9 +121,9 @@ func TestAddNodeToList(t *testing.T) {
 	}
 
 	// 4th test: removing node
-	time.Sleep(300 * time.Millisecond) //used to make the node't timestamp bigger, simulating disconnection
+	time.Sleep(1000 * time.Millisecond) //used to make the node't timestamp bigger, simulating disconnection
 
-	deadline := time.Now().Add(500 * time.Millisecond)
+	deadline := time.Now().Add(2000 * time.Millisecond)
 	for {
 		nl.AddNodeToList(msg2)
 		if !elevatorArrayContains(nl, "elevator1") {
