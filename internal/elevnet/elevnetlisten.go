@@ -11,8 +11,8 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 )
 
-const ConnectionCheck = 500 * time.Millisecond
-const WaitForReconnection = 1000 * time.Millisecond
+const ConnectionCheck = 1000 * time.Millisecond
+const WaitForReconnection = 2000 * time.Millisecond
 
 // ElevatorListObject holds a received message and its status.
 type ElevatorListObject struct {
@@ -35,7 +35,6 @@ type ElevNetListen struct {
 	elevMetaData  *elevmetadata.ElevMetaData // metadata for this elevator
 	elevatorArray []ElevatorListObject
 	ElevatorState *elevstate.ElevatorState
-	ackChan       chan AckMessage // Channel for ACKs
 }
 
 func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState) *ElevNetListen {
@@ -48,13 +47,12 @@ func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *el
 		conn:                    nil,
 		elevMetaData:            elevMetaData,
 		ElevatorState:           elevatorState,
-		ackChan:                 make(chan AckMessage, 10000),
 	}
 }
 
 // Start starts the listener by binding to the UDP address and launching goroutines.
 func (enl *ElevNetListen) Start() error {
-	localAddr, err := net.ResolveUDPAddr("udp", "10.100.23.255:9999") // or "0.0.0.0:9999"
+	localAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:9999") // or "0.0.0.0:9999"
 	if err != nil {
 		return fmt.Errorf("error resolving local UDP address: %v", err)
 	}
@@ -84,7 +82,7 @@ func (enl *ElevNetListen) Start() error {
 				Log.Error().Msgf("Error deserialising JSON: %v", err)
 				continue
 			}
-
+			enl.ElevatorsFoundOnNetwork <- msg
 		}
 	}()
 
@@ -92,9 +90,7 @@ func (enl *ElevNetListen) Start() error {
 		for {
 			select {
 			case msg := <-enl.ElevatorsFoundOnNetwork:
-				// Call your AddNodeToList() here
 				enl.AddNodeToList(msg)
-				Log.Info().Msg("I see the list")
 			case val := <-enl.startStopCh:
 				if val == 0 {
 					Log.Info().Msg("Stopping Listening task...")
