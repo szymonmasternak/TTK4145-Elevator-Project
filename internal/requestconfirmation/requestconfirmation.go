@@ -3,8 +3,9 @@ package requestconfirmation
 import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
+
 	//"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevnet"
-	//"time"
+	"time"
 )
 
 var Log = logger.GetLogger()
@@ -57,8 +58,8 @@ func NewRequestConfirmationMap(localID string) RequestConfirmationMap {
 func RequestConfirmer(localID string, requestMsgChannel <-chan RequestMessage, localRequestArray *RequestArray, RequestArrayChannel chan RequestArrayMessage) {
 	Log.Debug().Msgf("RequestConfirmer started")
 	RequestConfirmationMap := NewRequestConfirmationMap(localID)
-	alivePeers := []string{}
-	//confirmationTicker := time.NewTicker(100 * time.Millisecond)
+	alivePeers := []string{localID}
+	confirmationTicker := time.NewTicker(100 * time.Millisecond)
 	//localButtonPressChannel := make(chan elevevent.ButtonPressEvent)
 	//newRequestStateChannel := make(chan RequestArray)
 	//requestMsgChannel := make(chan RequestMessage)
@@ -76,6 +77,7 @@ func RequestConfirmer(localID string, requestMsgChannel <-chan RequestMessage, l
 				alivePeers,
 			)
 			//tempArr := RequestConfirmationMap[localID]
+			Log.Debug().Msgf("%v", RequestConfirmationMap[localID])
 			RequestArrayChannel <- RequestArrayMessage{Identifier: localID, RequestArray: RequestConfirmationMap[localID]}
 		// 	localRequestArray = (RequestConfirmationMap[localID])
 		// case msg := <-alivePeersChannel:
@@ -84,13 +86,14 @@ func RequestConfirmer(localID string, requestMsgChannel <-chan RequestMessage, l
 		case reqMsg := <-requestMsgChannel:
 			Log.Debug().Msgf("Local RequestMessage received")
 			tempArr := RequestConfirmationMap[localID]
-			if tempArr[reqMsg.Floor][reqMsg.Button].State == REQ_None && reqMsg.State == REQ_Unconfirmed {
+			if tempArr[reqMsg.Floor][reqMsg.Button].State <= REQ_None && reqMsg.State == REQ_Unconfirmed {
 				tempArr[reqMsg.Floor][reqMsg.Button].State = REQ_Unconfirmed
 				RequestConfirmationMap[localID] = tempArr
 			} else if tempArr[reqMsg.Floor][reqMsg.Button].State == REQ_Confirmed && reqMsg.State == REQ_Completed {
 				tempArr[reqMsg.Floor][reqMsg.Button].State = REQ_Completed
 				RequestConfirmationMap[localID] = tempArr
 			}
+			Log.Debug().Msgf("%v", RequestConfirmationMap[localID])
 
 			// case newReq := <-localButtonPressChannel:
 			// 	if RequestConfirmationMap[localID][newReq.Floor][newReq.Button].State == REQ_None {
@@ -104,6 +107,19 @@ func RequestConfirmer(localID string, requestMsgChannel <-chan RequestMessage, l
 			// 	}else {
 			// 		Log.Error().Msgf("Request completed without being confirmed")
 			// 	}
+		case <-confirmationTicker.C:
+			// Check if any requests have been confirmed by all nodes.
+			// If so, update the local RequestArray and broadcast the new state.
+			if len(alivePeers) == 1 {
+				RequestConfirmationMap = updateLocalRequestConfirmationMapFromIncomingArray(
+					RequestConfirmationMap,
+					localID,
+					RequestConfirmationMap[localID],
+					localID,
+					alivePeers,
+				)
+				RequestArrayChannel <- RequestArrayMessage{Identifier: localID, RequestArray: RequestConfirmationMap[localID]}
+			}
 		}
 	}
 

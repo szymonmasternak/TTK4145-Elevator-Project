@@ -32,7 +32,7 @@ type ElevatorState struct {
 	commandChannel            chan<- elevcmd.ElevatorCommand
 	stateInChannel            <-chan ElevatorState
 	stateOutChannel           chan<- ElevatorState
-	UnconfirmedRequestChannel chan requestconfirmation.RequestMessage
+	UnconfirmedRequestChannel chan requestconfirmation.RequestMessage `json:"-"`
 }
 
 func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateInChannel <-chan ElevatorState, stateOutChannel chan<- ElevatorState) *ElevatorState {
@@ -41,19 +41,22 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 		clearRequestVariant = elevconsts.All
 	}
 
+	unconfirmedRequestChannel := make(chan requestconfirmation.RequestMessage, 10)
+
 	elevatorState := &ElevatorState{
-		Floor:               -1,
-		Dirn:                elevconsts.Stop,
-		Behaviour:           elevconsts.Idle,
-		clearRequestVariant: clearRequestVariant,
-		doorOpenDuration:    time.Second * 3,
-		eventChannel:        eventChannel,
-		commandChannel:      commandChannel,
-		stateInChannel:      stateInChannel,
-		stateOutChannel:     stateOutChannel,
-		stopButton:          false,
-		obstructionSensor:   false,
-		doorOpenTime:        time.Time{}, //Returns zero value, since we dont know when it was last open
+		Floor:                     -1,
+		Dirn:                      elevconsts.Stop,
+		Behaviour:                 elevconsts.Idle,
+		clearRequestVariant:       clearRequestVariant,
+		doorOpenDuration:          time.Second * 3,
+		eventChannel:              eventChannel,
+		commandChannel:            commandChannel,
+		stateInChannel:            stateInChannel,
+		stateOutChannel:           stateOutChannel,
+		UnconfirmedRequestChannel: unconfirmedRequestChannel,
+		stopButton:                false,
+		obstructionSensor:         false,
+		doorOpenTime:              time.Time{}, //Returns zero value, since we dont know when it was last open
 	}
 	return elevatorState
 }

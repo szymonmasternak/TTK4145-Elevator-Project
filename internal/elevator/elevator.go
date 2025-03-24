@@ -68,6 +68,7 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 	stateOutChannel := make(chan elevstate.ElevatorState, 10)
 	requestArrayChannel := make(chan requestconfirmation.RequestArrayMessage, 10)
 
+
 	elevIO, err := elevio.NewElevatorIO(driverIPAddress, elevconsts.N_FLOORS, eventChannel, commandChannel)
 	if err != nil {
 		panic("Error Creating ElevIO Object")
