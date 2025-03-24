@@ -11,15 +11,17 @@ import (
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevevent"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requestconfirmation"
 )
 
 var Log = logger.GetLogger()
 
 type ElevatorState struct {
-	Floor     int
-	Dirn      elevconsts.Dirn
-	Requests  [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int
-	Behaviour elevconsts.ElevatorBehaviour
+	Floor             int
+	Dirn              elevconsts.Dirn
+	ConfirmedRequests [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int
+	RequestStates     [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]requestconfirmation.RequestState
+	Behaviour         elevconsts.ElevatorBehaviour
 
 	//Internal Variables
 	clearRequestVariant elevconsts.ClearRequestVariant
@@ -32,7 +34,6 @@ type ElevatorState struct {
 	stateInChannel      <-chan ElevatorState
 	stateOutChannel     chan<- ElevatorState
 }
-
 
 func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateInChannel <-chan ElevatorState, stateOutChannel chan<- ElevatorState) *ElevatorState {
 	clearRequestVariant := elevconsts.InDirn
@@ -105,14 +106,11 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 				switch evnt := event.Value.(type) {
 				case elevevent.FloorSensorEvent:
 					es.handleFloorArrival(evnt.Floor)
-					es.handleFloorArrival(evnt.Floor)
 				case elevevent.ButtonPressEvent:
 					Log.Info().Msgf("Button Has Been Pressed (%d, %s)", evnt.Button, evnt.Button.String())
 					es.handleButtonPress(evnt.Floor, evnt.Button)
-					es.handleButtonPress(evnt.Floor, evnt.Button)
 				case elevevent.StopButtonEvent:
 					Log.Info().Msgf("Stop Button is %v", evnt.Value)
-					es.handleStopButton(evnt.Value)
 					es.handleStopButton(evnt.Value)
 				case elevevent.ObstructionEvent:
 					Log.Info().Msgf("Obstruction Button is %v", evnt.Value)
@@ -161,7 +159,7 @@ func (es *ElevatorState) Print() {
 			if (f == elevconsts.N_FLOORS-1 && btn == int(elevconsts.HallUp)) || (f == 0 && btn == int(elevconsts.HallDown)) {
 				Log.Info().Msgf("|     ")
 			} else {
-				if es.Requests[f][btn] != 0 {
+				if es.ConfirmedRequests[f][btn] != 0 {
 					Log.Info().Msgf("|  #  ")
 				} else {
 					Log.Info().Msgf("|  -  ")
@@ -182,7 +180,7 @@ func (es *ElevatorState) setAllLightsSequence() {
 			buttonArray[i] = elevcmd.ButtonLightCommand{
 				Floor:  floor,
 				Button: elevconsts.Button(btn),
-				Value:  es.Requests[floor][btn] != 0,
+				Value:  es.ConfirmedRequests[floor][btn] != 0,
 			}
 		}
 	}
@@ -201,14 +199,14 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 		if es.RequestsShouldClearImmediately(btnFloor, btnType) {
 			es.doorOpenTime = time.Now().Add(es.doorOpenDuration)
 		} else {
-			es.Requests[btnFloor][btnType] = 1
+			es.ConfirmedRequests[btnFloor][btnType] = 1
 		}
 
 	case elevconsts.Moving:
-		es.Requests[btnFloor][btnType] = 1
+		es.ConfirmedRequests[btnFloor][btnType] = 1
 
 	case elevconsts.Idle:
-		es.Requests[btnFloor][btnType] = 1
+		es.ConfirmedRequests[btnFloor][btnType] = 1
 		es.Dirn, es.Behaviour = es.RequestsChooseDirection()
 
 		switch es.Behaviour {
@@ -279,7 +277,7 @@ func (es *ElevatorState) handleObstruction(obstructionState bool) {
 }
 
 func (es *ElevatorState) handleUpdateHallRequests(requests [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int) {
-	es.Requests = requests
+	es.ConfirmedRequests = requests
 	es.setAllLightsSequence()
 }
 
@@ -292,7 +290,7 @@ func (es *ElevatorState) UpdateState(newState ElevatorState) {
 	// If concurrency is a concern, consider adding a mutex lock/unlock here.
 	es.Floor = newState.Floor
 	es.Dirn = newState.Dirn
-	es.Requests = newState.Requests
+	es.ConfirmedRequests = newState.ConfirmedRequests
 	es.Behaviour = newState.Behaviour
 
 	// If you need to update other internal fields, do so here.

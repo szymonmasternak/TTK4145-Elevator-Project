@@ -17,10 +17,10 @@ func TestGetHallRequestAssignerElevatorInput(t *testing.T) {
 	requests[elevconsts.N_FLOORS-1][elevconsts.Cab] = 1 // floor 4 has a cab request
 
 	elevatorState := &elevstate.ElevatorState{
-		Floor:     1,
-		Dirn:      elevconsts.Up, // using a directional constant
-		Requests:  requests,
-		Behaviour: elevconsts.Moving, // using an example behaviour constant
+		Floor:             1,
+		Dirn:              elevconsts.Up, // using a directional constant
+		ConfirmedRequests: requests,
+		Behaviour:         elevconsts.Moving, // using an example behaviour constant
 	}
 
 	result := getHallRequestAssignerElevatorState(elevatorState)

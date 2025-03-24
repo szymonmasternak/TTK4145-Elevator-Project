@@ -71,7 +71,7 @@ func (assigner *HallRequestAssigner) Start(ctx context.Context, waitGroup *sync.
 				if len(input.States) != 0 {
 					optimalHallRequests := getOptimalHallRequests(assigner.executableVersion, input)
 					Log.Debug().Msgf("HallRequestAssigner got optimal hall requests")
-					optimalLocalRequests := getOptimalLocalRequests(optimalHallRequests, localState.Requests, assigner.localID)
+					optimalLocalRequests := getOptimalLocalRequests(optimalHallRequests, localState.ConfirmedRequests, assigner.localID)
 					assigner.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.UpdateHallRequestsEvent{Requests: optimalLocalRequests}}
 
 				}
@@ -87,7 +87,7 @@ func (assigner *HallRequestAssigner) Start(ctx context.Context, waitGroup *sync.
 func getHallRequestAssignerElevatorState(elevatorState *elevstate.ElevatorState) HallRequestAssignerElevatorState {
 	var cabRequests [elevconsts.N_FLOORS]bool
 	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
-		if elevatorState.Requests[floor][elevconsts.Cab] != 0 {
+		if elevatorState.ConfirmedRequests[floor][elevconsts.Cab] != 0 {
 			cabRequests[floor] = true
 		}
 	}
@@ -104,8 +104,8 @@ func getHallRequestAssignerInput(localElevatorState elevstate.ElevatorState, ele
 
 	hallRequests := [elevconsts.N_FLOORS][2]bool{}
 	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
-		hallRequests[floor][elevconsts.HallUp] = localElevatorState.Requests[floor][elevconsts.HallUp] != 0
-		hallRequests[floor][elevconsts.HallDown] = localElevatorState.Requests[floor][elevconsts.HallDown] != 0
+		hallRequests[floor][elevconsts.HallUp] = localElevatorState.ConfirmedRequests[floor][elevconsts.HallUp] != 0
+		hallRequests[floor][elevconsts.HallDown] = localElevatorState.ConfirmedRequests[floor][elevconsts.HallDown] != 0
 	}
 
 	states := make(map[string]HallRequestAssignerElevatorState)
