@@ -6,14 +6,16 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"os"
+	"syscall"
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 )
 
-const ConnectionCheck = 500 * time.Millisecond
-const WaitForReconnection = 1000 * time.Millisecond
+const ConnectionCheck = 1000 * time.Millisecond
+const WaitForReconnection = 2000 * time.Millisecond
 
 // ElevatorListObject holds a received message and its status.
 type ElevatorListObject struct {
@@ -37,7 +39,6 @@ type ElevNetListen struct {
 	elevatorArray    []ElevatorListObject
 	elevatorArrayMtx sync.Mutex
 	ElevatorState    *elevstate.ElevatorState
-	ackChan          chan AckMessage // Channel for ACKs
 }
 
 func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState) *ElevNetListen {
@@ -50,30 +51,52 @@ func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *el
 		conn:                    nil,
 		elevMetaData:            elevMetaData,
 		ElevatorState:           elevatorState,
-		ackChan:                 make(chan AckMessage, 10000),
 	}
 }
 
 // Start starts the listener by binding to the UDP address and launching goroutines.
 func (enl *ElevNetListen) Start() error {
-	localAddr, err := net.ResolveUDPAddr("udp", "255.255.255.255:9999") // or "0.0.0.0:9999"
+	localAddr, err := net.ResolveUDPAddr("udp", "10.100.23.255:9999")
 	if err != nil {
 		return fmt.Errorf("error resolving local UDP address: %v", err)
 	}
-	enl.conn, err = net.ListenUDP("udp", localAddr)
+
+	// Create UDP socket manually with SO_REUSEADDR
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP)
 	if err != nil {
-		return fmt.Errorf("error listening on UDP: %v", err)
+		return fmt.Errorf("socket error: %v", err)
 	}
+	if err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); err != nil {
+		return fmt.Errorf("setsockopt SO_REUSEADDR error: %v", err)
+	}
+
+	sockaddr := &syscall.SockaddrInet4{Port: localAddr.Port}
+	copy(sockaddr.Addr[:], net.IPv4zero.To4())
+	if err := syscall.Bind(fd, sockaddr); err != nil {
+		return fmt.Errorf("bind error: %v", err)
+	}
+
+	// Convert to *net.UDPConn
+	file := os.NewFile(uintptr(fd), "udp-reuseaddr")
+	c, err := net.FilePacketConn(file)
+	if err != nil {
+		return fmt.Errorf("FilePacketConn error: %v", err)
+	}
+	file.Close()
+	conn, ok := c.(*net.UDPConn)
+	if !ok {
+		return fmt.Errorf("failed to cast to UDPConn")
+	}
+	enl.conn = conn
 
 	listenBuffer := make([]byte, BUFFER_LENGTH)
 	enl.listening = true
-	Log.Info().Msgf("Started listening")
+	Log.Info().Msgf("Started listening on shared port")
 
 	go func() {
 		for {
-			n, addr, err := enl.conn.ReadFromUDP(listenBuffer)
+			n, _, err := enl.conn.ReadFromUDP(listenBuffer)
 			if err != nil {
-				// If the connection is closed, exit gracefully.
 				if opErr, ok := err.(*net.OpError); ok && opErr.Err.Error() == "use of closed network connection" {
 					return
 				}
@@ -86,47 +109,7 @@ func (enl *ElevNetListen) Start() error {
 				Log.Error().Msgf("Error deserialising JSON: %v", err)
 				continue
 			}
-
-			// If the message is not already an ACK, send an ACK response.
-			if !msg.AckMsg.Acknowledged {
-				// Create an ACK response with a fresh timestamp.
-				ackResponse := ElevatorMessage{
-					ElevatorData:  msg.ElevatorData,
-					ElevatorState: msg.ElevatorState,
-					AckMsg: AckMessage{
-						ID:           msg.AckMsg.ID,
-						Acknowledged: true,
-						TimeSent:     time.Now(), // Set fresh timestamp.
-					},
-				}
-				enl.ackChan <- ackResponse.AckMsg
-				jsonAck, err := json.Marshal(ackResponse)
-				if err != nil {
-					Log.Error().Msgf("Error marshalling ACK JSON: %v", err)
-				} else {
-					_, err = enl.conn.WriteToUDP(jsonAck, addr)
-					if err != nil {
-						Log.Error().Msgf("Error writing ACK to UDP Socket: %v", err)
-					} else {
-						Log.Debug().Msgf("Sent ACK for message ID %d, time stamp: %s", msg.AckMsg.ID, msg.AckMsg.TimeSent.Format(time.RFC3339))
-					}
-				}
-
-				// Forward the original broadcast message non-blockingly.
-				select {
-				case enl.ElevatorsFoundOnNetwork <- msg:
-				default:
-					Log.Warn().Msg("ElevatorsFoundOnNetwork channel full, dropping message")
-				}
-			} else {
-				// If the message is an ACK, forward it to the ack channel non-blockingly.
-				select {
-				case enl.ackChan <- msg.AckMsg:
-					Log.Debug().Msgf("Received ACK for message ID %d", msg.AckMsg.ID)
-				default:
-					Log.Warn().Msgf("ACK channel full, dropping ACK for message ID %d", msg.AckMsg.ID)
-				}
-			}
+			enl.ElevatorsFoundOnNetwork <- msg
 		}
 	}()
 
@@ -134,18 +117,16 @@ func (enl *ElevNetListen) Start() error {
 		for {
 			select {
 			case msg := <-enl.ElevatorsFoundOnNetwork:
-				// Call your AddNodeToList() here
 				enl.AddNodeToList(msg)
-				Log.Info().Msg("I see the list")
 			case val := <-enl.startStopCh:
 				if val == 0 {
 					Log.Info().Msg("Stopping Listening task...")
-					// Clean up, then return
 					return
 				}
 			}
 		}
 	}()
+
 	go func() {
 		defer enl.conn.Close()
 		for {
