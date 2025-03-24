@@ -12,6 +12,7 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requestconfirmation"
 )
 
 //a reconection attempt may be necessary
@@ -38,6 +39,7 @@ type ElevatorMessage struct {
 	AckMsg        AckMessage
 	ElevatorData  elevmetadata.ElevMetaData
 	ElevatorState elevstate.ElevatorState
+	RequestState  requestconfirmation.RequestState
 }
 
 func MakeAckMessage(id int, ack bool) AckMessage {
