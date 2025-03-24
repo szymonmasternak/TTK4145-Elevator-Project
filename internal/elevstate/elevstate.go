@@ -32,7 +32,7 @@ type ElevatorState struct {
 	commandChannel            chan<- elevcmd.ElevatorCommand
 	stateInChannel            <-chan ElevatorState
 	stateOutChannel           chan<- ElevatorState
-	unconfirmedRequestChannel chan requestconfirmation.RequestMessage
+	UnconfirmedRequestChannel chan requestconfirmation.RequestMessage
 }
 
 func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateInChannel <-chan ElevatorState, stateOutChannel chan<- ElevatorState) *ElevatorState {
@@ -199,7 +199,7 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 		if es.RequestsShouldClearImmediately(btnFloor, btnType) {
 			es.doorOpenTime = time.Now().Add(es.doorOpenDuration)
 		} else {
-			es.unconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+			es.UnconfirmedRequestChannel <- requestconfirmation.RequestMessage{
 				Floor:  btnFloor,
 				Button: btnType,
 				State:  requestconfirmation.REQ_Unconfirmed,
@@ -207,14 +207,14 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 		}
 
 	case elevconsts.Moving:
-		es.unconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+		es.UnconfirmedRequestChannel <- requestconfirmation.RequestMessage{
 			Floor:  btnFloor,
 			Button: btnType,
 			State:  requestconfirmation.REQ_Unconfirmed,
 		}
 
 	case elevconsts.Idle:
-		es.unconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+		es.UnconfirmedRequestChannel <- requestconfirmation.RequestMessage{
 			Floor:  btnFloor,
 			Button: btnType,
 			State:  requestconfirmation.REQ_Unconfirmed,

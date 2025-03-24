@@ -104,10 +104,10 @@ func (es *ElevatorState) RequestsClearAtCurrentFloor() {
 	switch es.clearRequestVariant {
 	case elevconsts.All:
 		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
-			es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
-				Floor: es.Floor,
+			es.UnconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+				Floor:  es.Floor,
 				Button: elevconsts.Button(btn),
-				State: requestconfirmation.REQ_Completed,
+				State:  requestconfirmation.REQ_Completed,
 			}
 
 		}
@@ -116,40 +116,40 @@ func (es *ElevatorState) RequestsClearAtCurrentFloor() {
 		switch es.Dirn {
 		case elevconsts.Up:
 			if !es.requestsAbove() && es.ConfirmedRequests[es.Floor][elevconsts.HallUp] == 0 {
-				es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
-					Floor: es.Floor,
+				es.UnconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+					Floor:  es.Floor,
 					Button: elevconsts.HallDown,
-					State: requestconfirmation.REQ_Completed,
+					State:  requestconfirmation.REQ_Completed,
 				}
 			}
-			es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
-				Floor: es.Floor,
+			es.UnconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+				Floor:  es.Floor,
 				Button: elevconsts.HallUp,
-				State: requestconfirmation.REQ_Completed,
+				State:  requestconfirmation.REQ_Completed,
 			}
 		case elevconsts.Down:
 			if !es.requestsBelow() && es.ConfirmedRequests[es.Floor][elevconsts.HallDown] == 0 {
-				es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
-					Floor: es.Floor,
+				es.UnconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+					Floor:  es.Floor,
 					Button: elevconsts.HallUp,
-					State: requestconfirmation.REQ_Completed,
+					State:  requestconfirmation.REQ_Completed,
 				}
 			}
-			es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
-				Floor: es.Floor,
+			es.UnconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+				Floor:  es.Floor,
 				Button: elevconsts.HallDown,
-				State: requestconfirmation.REQ_Completed,
+				State:  requestconfirmation.REQ_Completed,
 			}
 		case elevconsts.Stop:
-			es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
-				Floor: es.Floor,
+			es.UnconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+				Floor:  es.Floor,
 				Button: elevconsts.HallUp,
-				State: requestconfirmation.REQ_Completed,
+				State:  requestconfirmation.REQ_Completed,
 			}
-			es.unconfirmedRequestChannel <-requestconfirmation.RequestMessage{
-				Floor: es.Floor,
+			es.UnconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+				Floor:  es.Floor,
 				Button: elevconsts.HallDown,
-				State: requestconfirmation.REQ_Completed,
+				State:  requestconfirmation.REQ_Completed,
 			}
 		}
 	}

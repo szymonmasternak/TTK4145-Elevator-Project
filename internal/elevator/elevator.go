@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevevent"
@@ -36,10 +35,11 @@ type Elevator struct {
 	RequestStates       *requestconfirmation.RequestArray
 	HallRequestAssigner *elevhallrequestassigner.HallRequestAssigner
 
-	eventChannel    chan elevevent.ElevatorEvent
-	commandChannel  chan elevcmd.ElevatorCommand
-	stateInChannel  chan elevstate.ElevatorState
-	stateOutChannel chan elevstate.ElevatorState
+	eventChannel        chan elevevent.ElevatorEvent
+	commandChannel      chan elevcmd.ElevatorCommand
+	stateInChannel      chan elevstate.ElevatorState
+	stateOutChannel     chan elevstate.ElevatorState
+	requestArrayChannel chan requestconfirmation.RequestArrayMessage
 
 	initialised bool //set to true if initialised via NewElevator Function
 	running     bool
@@ -66,6 +66,7 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 	commandChannel := make(chan elevcmd.ElevatorCommand, COMMAND_CHANNEL_SIZE)
 	stateInChannel := make(chan elevstate.ElevatorState, 10)
 	stateOutChannel := make(chan elevstate.ElevatorState, 10)
+	requestArrayChannel := make(chan requestconfirmation.RequestArrayMessage, 10)
 
 	elevIO, err := elevio.NewElevatorIO(driverIPAddress, elevconsts.N_FLOORS, eventChannel, commandChannel)
 	if err != nil {
@@ -87,6 +88,7 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 		commandChannel:      commandChannel,
 		stateInChannel:      stateInChannel,
 		stateOutChannel:     stateOutChannel,
+		requestArrayChannel: requestArrayChannel,
 	}
 }
 
@@ -122,7 +124,24 @@ func (e *Elevator) Start() {
 	e.HallRequestAssigner.Start(ctxAssigner, wgAssigner)
 	e.cancelArray = append(e.cancelArray, cancelAssigner)
 
-	e.running = true
+	go func() {
+		for {
+			select {
+			case requestArray := <-e.requestArrayChannel:
+				e.RequestStates = &requestArray.RequestArray
+				for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
+					for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
+						if requestArray.RequestArray[floor][btn].State == requestconfirmation.REQ_Confirmed {
+							e.State.ConfirmedRequests[floor][btn] = 1
+						} else {
+							e.State.ConfirmedRequests[floor][btn] = 0
+						}
+					}
+				}
+			}
+		}
+	}()
+	go requestconfirmation.RequestConfirmer(e.MetaData.Identifier, e.State.UnconfirmedRequestChannel, e.RequestStates, e.requestArrayChannel)
 }
 
 func (e *Elevator) Stop() {

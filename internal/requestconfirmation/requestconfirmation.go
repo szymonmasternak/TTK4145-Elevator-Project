@@ -1,8 +1,8 @@
 package requestconfirmation
 
 import (
-	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 	//"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevnet"
 	//"time"
 )
@@ -20,7 +20,7 @@ const (
 )
 
 type Request struct {
-	State RequestState
+	State          RequestState
 	ConsensusPeers []string
 }
 
@@ -29,28 +29,33 @@ type RequestArray [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]Request
 type RequestConfirmationMap map[string]RequestArray
 
 type RequestMessage struct {
-	Floor int
+	Floor  int
 	Button elevconsts.Button
-	State RequestState
+	State  RequestState
+}
+type RequestArrayMessage struct {
+	Identifier   string
+	RequestArray RequestArray
 }
 
 func NewRequestConfirmationMap(localID string) RequestConfirmationMap {
-    reqArr := RequestArray{}
-    for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
-        for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
-            reqArr[floor][btn] = Request{
-                State: REQ_Initial,
-                ConsensusPeers: []string{},
-            }
-        }
-    }
-    
-    requestMap := make(RequestConfirmationMap)
-    requestMap[localID] = reqArr
-    return requestMap
+	reqArr := RequestArray{}
+	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
+		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
+			reqArr[floor][btn] = Request{
+				State:          REQ_Initial,
+				ConsensusPeers: []string{},
+			}
+		}
+	}
+
+	requestMap := make(RequestConfirmationMap)
+	requestMap[localID] = reqArr
+	return requestMap
 }
 
-func  RequestConfirmer(localID string, requestMsgChannel <-chan RequestMessage, localRequestArray *RequestArray, ElevatorMessageChannel <-chan elevnet.ElevatorMessage) {
+func RequestConfirmer(localID string, requestMsgChannel <-chan RequestMessage, localRequestArray *RequestArray, RequestArrayChannel chan RequestArrayMessage) {
+	Log.Debug().Msgf("RequestConfirmer started")
 	RequestConfirmationMap := NewRequestConfirmationMap(localID)
 	alivePeers := []string{}
 	//confirmationTicker := time.NewTicker(100 * time.Millisecond)
@@ -59,21 +64,25 @@ func  RequestConfirmer(localID string, requestMsgChannel <-chan RequestMessage, 
 	//requestMsgChannel := make(chan RequestMessage)
 	for {
 		select {
-		case incomingMsg := <-ElevatorMessageChannel:
+		case incomingMsg := <-RequestArrayChannel:
+			Log.Debug().Msgf("RequestArrayMessage received")
 			// incomingMsg.remoteID contains the remote node's ID
 			// incomingMsg.arr contains the remote node's RequestArray.
 			RequestConfirmationMap = updateLocalRequestConfirmationMapFromIncomingArray(
 				RequestConfirmationMap,
-				incomingMsg.ElevatorData.Identifier,
+				incomingMsg.Identifier,
 				incomingMsg.RequestArray,
 				localID,
 				alivePeers,
 			)
-			localRequestArray = (RequestConfirmationMap[localID])
-		case msg := <-alivePeersChannel:
-			// Update the list of alive peers.
-			alivePeers = msg.Peers
+			//tempArr := RequestConfirmationMap[localID]
+			RequestArrayChannel <- RequestArrayMessage{Identifier: localID, RequestArray: RequestConfirmationMap[localID]}
+		// 	localRequestArray = (RequestConfirmationMap[localID])
+		// case msg := <-alivePeersChannel:
+		// 	// Update the list of alive peers.
+		// 	alivePeers = msg.Peers
 		case reqMsg := <-requestMsgChannel:
+			Log.Debug().Msgf("Local RequestMessage received")
 			tempArr := RequestConfirmationMap[localID]
 			if tempArr[reqMsg.Floor][reqMsg.Button].State == REQ_None && reqMsg.State == REQ_Unconfirmed {
 				tempArr[reqMsg.Floor][reqMsg.Button].State = REQ_Unconfirmed
@@ -83,23 +92,23 @@ func  RequestConfirmer(localID string, requestMsgChannel <-chan RequestMessage, 
 				RequestConfirmationMap[localID] = tempArr
 			}
 
-		// case newReq := <-localButtonPressChannel:
-		// 	if RequestConfirmationMap[localID][newReq.Floor][newReq.Button].State == REQ_None {
-		// 		tempArr := RequestConfirmationMap[localID]
-		// 		tempArr[newReq.Floor][newReq.Button].State = REQ_Unconfirmed
-		// 		RequestConfirmationMap[localID] = tempArr
-		// 	}
-		// case reqCompleted := <-localRequestCompletedChannel:
-		// 	if RequestConfirmationMap[localID][reqCompleted.Floor][reqCompleted.Button].State == REQ_Confirmed {
-		// 		RequestConfirmationMap[localID][reqCompleted.Floor][reqCompleted.Button].State = REQ_Completed
-		// 	}else {
-		// 		Log.Error().Msgf("Request completed without being confirmed")
-		// 	}
+			// case newReq := <-localButtonPressChannel:
+			// 	if RequestConfirmationMap[localID][newReq.Floor][newReq.Button].State == REQ_None {
+			// 		tempArr := RequestConfirmationMap[localID]
+			// 		tempArr[newReq.Floor][newReq.Button].State = REQ_Unconfirmed
+			// 		RequestConfirmationMap[localID] = tempArr
+			// 	}
+			// case reqCompleted := <-localRequestCompletedChannel:
+			// 	if RequestConfirmationMap[localID][reqCompleted.Floor][reqCompleted.Button].State == REQ_Confirmed {
+			// 		RequestConfirmationMap[localID][reqCompleted.Floor][reqCompleted.Button].State = REQ_Completed
+			// 	}else {
+			// 		Log.Error().Msgf("Request completed without being confirmed")
+			// 	}
 		}
-	}	
-
+	}
 
 }
+
 // mergeRequests merges two Request instances (local and remote) using the confirmation logic.
 func mergeRequests(localReq, remoteReq Request, localID string, allNodes []string) Request {
 	// Merge the consensus lists.
@@ -118,25 +127,25 @@ func mergeRequests(localReq, remoteReq Request, localID string, allNodes []strin
 		localReq.ConsensusPeers = MergeStringArrays(localReq.ConsensusPeers, remoteReq.ConsensusPeers)
 		localReq = confirmRequest(localReq, localID, allNodes)
 	}
-	
+
 	return localReq
 }
 
 // confirmRequest merges confirmations and updates the request state
 // only when all nodes (as provided by allNodes slice) have confirmed.
 func confirmRequest(req Request, localID string, allNodes []string) Request {
-    // Ensure the local node has confirmed.
-    if !containsID(req.ConsensusPeers, localID) {
-        req.ConsensusPeers = append(req.ConsensusPeers, localID)
-    }
+	// Ensure the local node has confirmed.
+	if !containsID(req.ConsensusPeers, localID) {
+		req.ConsensusPeers = append(req.ConsensusPeers, localID)
+	}
 
-    // If the number of unique confirmations equals the number of active nodes,
-    // then all nodes have confirmed.
-    for _, node := range allNodes {
+	// If the number of unique confirmations equals the number of active nodes,
+	// then all nodes have confirmed.
+	for _, node := range allNodes {
 		if !containsID(req.ConsensusPeers, node) {
 			return req
 		}
-    }
+	}
 	switch req.State {
 	case REQ_Completed:
 		req.State = REQ_None
@@ -144,7 +153,7 @@ func confirmRequest(req Request, localID string, allNodes []string) Request {
 		req.State = REQ_Confirmed
 	}
 	req.ConsensusPeers = []string{}
-    return req
+	return req
 }
 
 // updateLocalRequestConfirmationMapFromIncomingArray updates the local RequestConfirmationMap
@@ -187,27 +196,24 @@ func updateLocalRequestConfirmationMapFromIncomingArray(
 // 	return localMap
 // }
 
-
-
 // MergeStringArrays merges two slices of strings ensuring uniqueness.
 func MergeStringArrays(arr1 []string, arr2 []string) []string {
-    unique := make(map[string]bool)
-    merged := []string{}
-    for _, s := range arr1 {
-        if !unique[s] {
-            unique[s] = true
-            merged = append(merged, s)
-        }
-    }
-    for _, s := range arr2 {
-        if !unique[s] {
-            unique[s] = true
-            merged = append(merged, s)
-        }
-    }
-    return merged
+	unique := make(map[string]bool)
+	merged := []string{}
+	for _, s := range arr1 {
+		if !unique[s] {
+			unique[s] = true
+			merged = append(merged, s)
+		}
+	}
+	for _, s := range arr2 {
+		if !unique[s] {
+			unique[s] = true
+			merged = append(merged, s)
+		}
+	}
+	return merged
 }
-
 
 // mergeRequestArrays iterates through the entire RequestArray to merge two arrays.
 func mergeRequestArrays(local, remote RequestArray, localID string, allNodes []string) RequestArray {
@@ -222,12 +228,12 @@ func mergeRequestArrays(local, remote RequestArray, localID string, allNodes []s
 
 // containsID checks if an id is already in the slice.
 func containsID(ids []string, id string) bool {
-    for _, v := range ids {
-        if v == id {
-            return true
-        }
-    }
-    return false
+	for _, v := range ids {
+		if v == id {
+			return true
+		}
+	}
+	return false
 }
 
 // --- ElevatorState Update Integration ---
