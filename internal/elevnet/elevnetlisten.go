@@ -69,7 +69,7 @@ func (enl *ElevNetListen) Start() error {
 
 	go func() {
 		for {
-			n, addr, err := enl.conn.ReadFromUDP(listenBuffer)
+			n, _, err := enl.conn.ReadFromUDP(listenBuffer)
 			if err != nil {
 				// If the connection is closed, exit gracefully.
 				if opErr, ok := err.(*net.OpError); ok && opErr.Err.Error() == "use of closed network connection" {
@@ -85,46 +85,6 @@ func (enl *ElevNetListen) Start() error {
 				continue
 			}
 
-			// If the message is not already an ACK, send an ACK response.
-			if !msg.AckMsg.Acknowledged {
-				// Create an ACK response with a fresh timestamp.
-				ackResponse := ElevatorMessage{
-					ElevatorData:  msg.ElevatorData,
-					ElevatorState: msg.ElevatorState,
-					AckMsg: AckMessage{
-						ID:           msg.AckMsg.ID,
-						Acknowledged: true,
-						TimeSent:     time.Now(), // Set fresh timestamp.
-					},
-				}
-				enl.ackChan <- ackResponse.AckMsg
-				jsonAck, err := json.Marshal(ackResponse)
-				if err != nil {
-					Log.Error().Msgf("Error marshalling ACK JSON: %v", err)
-				} else {
-					_, err = enl.conn.WriteToUDP(jsonAck, addr)
-					if err != nil {
-						Log.Error().Msgf("Error writing ACK to UDP Socket: %v", err)
-					} else {
-						Log.Debug().Msgf("Sent ACK for message ID %d, time stamp: %s", msg.AckMsg.ID, msg.AckMsg.TimeSent.Format(time.RFC3339))
-					}
-				}
-
-				// Forward the original broadcast message non-blockingly.
-				select {
-				case enl.ElevatorsFoundOnNetwork <- msg:
-				default:
-					Log.Warn().Msg("ElevatorsFoundOnNetwork channel full, dropping message")
-				}
-			} else {
-				// If the message is an ACK, forward it to the ack channel non-blockingly.
-				select {
-				case enl.ackChan <- msg.AckMsg:
-					Log.Debug().Msgf("Received ACK for message ID %d", msg.AckMsg.ID)
-				default:
-					Log.Warn().Msgf("ACK channel full, dropping ACK for message ID %d", msg.AckMsg.ID)
-				}
-			}
 		}
 	}()
 
