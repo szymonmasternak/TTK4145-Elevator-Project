@@ -1,15 +1,15 @@
 package requestconfirmation
 
 import (
+	"time"
+
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
-
-	//"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevnet"
-	"time"
 )
 
 var Log = logger.GetLogger()
 
+// RequestState represents the state of a request.
 type RequestState int
 
 const (
@@ -20,25 +20,61 @@ const (
 	REQ_Completed                = 3
 )
 
+// Request holds the state and list of nodes that have confirmed the request.
 type Request struct {
 	State          RequestState
 	ConsensusPeers []string
 }
 
+// RequestArray is a two-dimensional array of requests.
 type RequestArray [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]Request
 
+// RequestConfirmationMap maps a node identifier to its RequestArray.
 type RequestConfirmationMap map[string]RequestArray
 
+// RequestMessage is used for local button press or state changes.
 type RequestMessage struct {
 	Floor  int
 	Button elevconsts.Button
 	State  RequestState
 }
+
+// RequestArrayMessage is used to exchange the entire RequestArray between nodes.
 type RequestArrayMessage struct {
 	Identifier   string
 	RequestArray RequestArray
 }
 
+// RequestHandler manages local state and communications with other nodes.
+type RequestHandler struct {
+	localID string
+	// requestMap holds the local state and remote nodes' states.
+	requestMap RequestConfirmationMap
+	alivePeers []string
+
+	requestUpdateChannel <-chan RequestMessage      // Local messages (e.g., button presses)
+	inboundArrayChannel  <-chan RequestArrayMessage // Inbound messages from remote nodes
+	outboundArrayChannel chan<- RequestArrayMessage // Outbound messages for broadcasting local state
+}
+
+// NewRequestHandler creates a new RequestHandler instance.
+func NewRequestHandler(
+	localID string,
+	requestMsgChannel <-chan RequestMessage,
+	inboundArrayChannel <-chan RequestArrayMessage,
+	outboundArrayChannel chan<- RequestArrayMessage,
+) *RequestHandler {
+	return &RequestHandler{
+		localID:              localID,
+		requestMap:           NewRequestConfirmationMap(localID),
+		alivePeers:           []string{localID},
+		requestUpdateChannel: requestMsgChannel,
+		inboundArrayChannel:  inboundArrayChannel,
+		outboundArrayChannel: outboundArrayChannel,
+	}
+}
+
+// NewRequestConfirmationMap initializes the RequestConfirmationMap with the local node.
 func NewRequestConfirmationMap(localID string) RequestConfirmationMap {
 	reqArr := RequestArray{}
 	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
@@ -49,173 +85,109 @@ func NewRequestConfirmationMap(localID string) RequestConfirmationMap {
 			}
 		}
 	}
-
 	requestMap := make(RequestConfirmationMap)
 	requestMap[localID] = reqArr
 	return requestMap
 }
 
-func RequestConfirmer(localID string, requestMsgChannel <-chan RequestMessage, localRequestArray *RequestArray, RequestArrayChannel chan RequestArrayMessage) {
+// Start listens for inbound RequestArrayMessages and local RequestMessages,
+// updates the internal state accordingly, and broadcasts changes via the outbound channel.
+func (handler *RequestHandler) Start() {
 	Log.Debug().Msgf("RequestConfirmer started")
-	RequestConfirmationMap := NewRequestConfirmationMap(localID)
-	alivePeers := []string{localID}
 	confirmationTicker := time.NewTicker(100 * time.Millisecond)
-	//localButtonPressChannel := make(chan elevevent.ButtonPressEvent)
-	//newRequestStateChannel := make(chan RequestArray)
-	//requestMsgChannel := make(chan RequestMessage)
-	for {
-		select {
-		case incomingMsg := <-RequestArrayChannel:
-			Log.Debug().Msgf("RequestArrayMessage received")
-			// incomingMsg.remoteID contains the remote node's ID
-			// incomingMsg.arr contains the remote node's RequestArray.
-			RequestConfirmationMap = updateLocalRequestConfirmationMapFromIncomingArray(
-				RequestConfirmationMap,
-				incomingMsg.Identifier,
-				incomingMsg.RequestArray,
-				localID,
-				alivePeers,
-			)
-			//tempArr := RequestConfirmationMap[localID]
-			Log.Debug().Msgf("%v", RequestConfirmationMap[localID])
-			RequestArrayChannel <- RequestArrayMessage{Identifier: localID, RequestArray: RequestConfirmationMap[localID]}
-		// 	localRequestArray = (RequestConfirmationMap[localID])
-		// case msg := <-alivePeersChannel:
-		// 	// Update the list of alive peers.
-		// 	alivePeers = msg.Peers
-		case reqMsg := <-requestMsgChannel:
-			Log.Debug().Msgf("Local RequestMessage received")
-			tempArr := RequestConfirmationMap[localID]
-			if tempArr[reqMsg.Floor][reqMsg.Button].State <= REQ_None && reqMsg.State == REQ_Unconfirmed {
-				tempArr[reqMsg.Floor][reqMsg.Button].State = REQ_Unconfirmed
-				RequestConfirmationMap[localID] = tempArr
-			} else if tempArr[reqMsg.Floor][reqMsg.Button].State == REQ_Confirmed && reqMsg.State == REQ_Completed {
-				tempArr[reqMsg.Floor][reqMsg.Button].State = REQ_Completed
-				RequestConfirmationMap[localID] = tempArr
-			}
-			Log.Debug().Msgf("%v", RequestConfirmationMap[localID])
+	go func() {
+		for {
+			select {
+			// Process inbound messages from remote nodes.
+			case incomingMsg := <-handler.inboundArrayChannel:
+				Log.Debug().Msgf("Inbound RequestArrayMessage received from %s", incomingMsg.Identifier)
+				handler.alivePeers = MergeStringArrays(handler.alivePeers, []string{incomingMsg.Identifier})
+				handler.updateLocalRequestMap(incomingMsg.Identifier, incomingMsg.RequestArray)
+				Log.Debug().Msgf("Local map for %s: %v", handler.localID, handler.requestMap[handler.localID])
+				// Broadcast updated local state.
+				handler.outboundArrayChannel <- RequestArrayMessage{
+					Identifier:   handler.localID,
+					RequestArray: handler.requestMap[handler.localID],
+				}
 
-			// case newReq := <-localButtonPressChannel:
-			// 	if RequestConfirmationMap[localID][newReq.Floor][newReq.Button].State == REQ_None {
-			// 		tempArr := RequestConfirmationMap[localID]
-			// 		tempArr[newReq.Floor][newReq.Button].State = REQ_Unconfirmed
-			// 		RequestConfirmationMap[localID] = tempArr
-			// 	}
-			// case reqCompleted := <-localRequestCompletedChannel:
-			// 	if RequestConfirmationMap[localID][reqCompleted.Floor][reqCompleted.Button].State == REQ_Confirmed {
-			// 		RequestConfirmationMap[localID][reqCompleted.Floor][reqCompleted.Button].State = REQ_Completed
-			// 	}else {
-			// 		Log.Error().Msgf("Request completed without being confirmed")
-			// 	}
-		case <-confirmationTicker.C:
-			// Check if any requests have been confirmed by all nodes.
-			// If so, update the local RequestArray and broadcast the new state.
-			if len(alivePeers) == 1 {
-				RequestConfirmationMap = updateLocalRequestConfirmationMapFromIncomingArray(
-					RequestConfirmationMap,
-					localID,
-					RequestConfirmationMap[localID],
-					localID,
-					alivePeers,
-				)
-				RequestArrayChannel <- RequestArrayMessage{Identifier: localID, RequestArray: RequestConfirmationMap[localID]}
+			// Process local request messages.
+			case reqMsg := <-handler.requestUpdateChannel:
+				Log.Debug().Msgf("Local RequestMessage received")
+				tempArr := handler.requestMap[handler.localID]
+				if tempArr[reqMsg.Floor][reqMsg.Button].State <= REQ_None && reqMsg.State == REQ_Unconfirmed {
+					tempArr[reqMsg.Floor][reqMsg.Button].State = REQ_Unconfirmed
+				} else if tempArr[reqMsg.Floor][reqMsg.Button].State == REQ_Confirmed && reqMsg.State == REQ_Completed {
+					tempArr[reqMsg.Floor][reqMsg.Button].State = REQ_Completed
+				}
+				handler.requestMap[handler.localID] = tempArr
+				handler.outboundArrayChannel <- RequestArrayMessage{
+					Identifier:   handler.localID,
+					RequestArray: handler.requestMap[handler.localID],
+				}
+				Log.Debug().Msgf("Updated local map: %v", handler.requestMap[handler.localID])
+
+			// Periodic update using the ticker.
+			case <-confirmationTicker.C:
+				// For example, only update if only the local node is active.
+				if len(handler.alivePeers) == 1 {
+					handler.updateLocalRequestMap(handler.localID, handler.requestMap[handler.localID])
+					handler.outboundArrayChannel <- RequestArrayMessage{
+						Identifier:   handler.localID,
+						RequestArray: handler.requestMap[handler.localID],
+					}
+				}
 			}
 		}
-	}
-
+	}()
 }
 
-// mergeRequests merges two Request instances (local and remote) using the confirmation logic.
-func mergeRequests(localReq, remoteReq Request, localID string, allNodes []string) Request {
+// mergeRequests merges two Request instances using confirmation logic.
+func (handler *RequestHandler) mergeRequests(localReq, remoteReq Request) Request {
 	// Merge the consensus lists.
 	localReq.ConsensusPeers = MergeStringArrays(localReq.ConsensusPeers, remoteReq.ConsensusPeers)
 
-	// Cyclic counter
+	// Adjust state based on priority.
 	if localReq.State == REQ_None && remoteReq.State == REQ_Completed {
-		//continue
+		// Ignore remote state.
 	} else if localReq.State < remoteReq.State {
 		localReq.State = remoteReq.State
 	} else if localReq.State == REQ_Completed && remoteReq.State == REQ_None {
 		localReq.State = remoteReq.State
 	}
 
+	// If request is unconfirmed or completed, try to confirm it.
 	if localReq.State == REQ_Completed || localReq.State == REQ_Unconfirmed {
 		localReq.ConsensusPeers = MergeStringArrays(localReq.ConsensusPeers, remoteReq.ConsensusPeers)
-		localReq = confirmRequest(localReq, localID, allNodes)
+		localReq = confirmRequest(localReq, handler.localID, handler.alivePeers)
 	}
 
 	return localReq
 }
 
-// confirmRequest merges confirmations and updates the request state
-// only when all nodes (as provided by allNodes slice) have confirmed.
-func confirmRequest(req Request, localID string, allNodes []string) Request {
-	// Ensure the local node has confirmed.
-	if !containsID(req.ConsensusPeers, localID) {
-		req.ConsensusPeers = append(req.ConsensusPeers, localID)
+// updateLocalRequestMap updates the requestMap for a specific remote node.
+func (handler *RequestHandler) updateLocalRequestMap(remoteID string, incomingArr RequestArray) {
+	if existingArr, exists := handler.requestMap[remoteID]; exists {
+		handler.requestMap[remoteID] = handler.mergeRequestArrays(existingArr, incomingArr)
+	} else {
+		handler.requestMap[remoteID] = incomingArr
 	}
+}
 
-	// If the number of unique confirmations equals the number of active nodes,
-	// then all nodes have confirmed.
-	for _, node := range allNodes {
-		if !containsID(req.ConsensusPeers, node) {
-			return req
+// mergeRequestArrays iterates through the RequestArray to merge two arrays.
+func (handler *RequestHandler) mergeRequestArrays(local, remote RequestArray) RequestArray {
+	merged := local
+	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
+		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
+			merged[floor][btn] = handler.mergeRequests(local[floor][btn], remote[floor][btn])
 		}
 	}
-	switch req.State {
-	case REQ_Completed:
-		req.State = REQ_None
-	case REQ_Unconfirmed:
-		req.State = REQ_Confirmed
-	}
-	req.ConsensusPeers = []string{}
-	return req
+	return merged
 }
-
-// updateLocalRequestConfirmationMapFromIncomingArray updates the local RequestConfirmationMap
-// for a specific remote node using the incoming RequestArray.
-func updateLocalRequestConfirmationMapFromIncomingArray(
-	localMap RequestConfirmationMap,
-	remoteID string,
-	incomingArr RequestArray,
-	localID string,
-	allNodes []string,
-) RequestConfirmationMap {
-	// If an entry for remoteID exists, merge the incoming array with the existing one.
-	if existingArr, exists := localMap[remoteID]; exists {
-		localMap[remoteID] = mergeRequestArrays(existingArr, incomingArr, localID, allNodes)
-	} else {
-		// Otherwise, simply add the incoming array.
-		localMap[remoteID] = incomingArr
-	}
-	return localMap
-}
-
-// // updateLocalRequestConfirmationMap takes the local RequestConfirmationMap
-// // and merges in the incoming RequestConfirmationMap using the mergeRequestArrays logic.
-// func updateLocalRequestConfirmationMap(
-// 	localMap RequestConfirmationMap,
-// 	incomingMap RequestConfirmationMap,
-// 	localID string,
-// 	allNodes []string,
-// ) RequestConfirmationMap {
-// 	// Iterate over each node in the incoming map.
-// 	for nodeID, incomingReqArray := range incomingMap {
-// 		if localReqArray, exists := localMap[nodeID]; exists {
-// 			// If we already have an entry for this node, merge the two RequestArrays.
-// 			localMap[nodeID] = mergeRequestArrays(localReqArray, incomingReqArray, localID, allNodes)
-// 		} else {
-// 			// If this is a new node, simply add its RequestArray.
-// 			localMap[nodeID] = incomingReqArray
-// 		}
-// 	}
-// 	return localMap
-// }
 
 // MergeStringArrays merges two slices of strings ensuring uniqueness.
 func MergeStringArrays(arr1 []string, arr2 []string) []string {
 	unique := make(map[string]bool)
-	merged := []string{}
+	var merged []string
 	for _, s := range arr1 {
 		if !unique[s] {
 			unique[s] = true
@@ -231,18 +203,7 @@ func MergeStringArrays(arr1 []string, arr2 []string) []string {
 	return merged
 }
 
-// mergeRequestArrays iterates through the entire RequestArray to merge two arrays.
-func mergeRequestArrays(local, remote RequestArray, localID string, allNodes []string) RequestArray {
-	merged := local
-	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
-		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
-			merged[floor][btn] = mergeRequests(local[floor][btn], remote[floor][btn], localID, allNodes)
-		}
-	}
-	return merged
-}
-
-// containsID checks if an id is already in the slice.
+// containsID checks if a given id exists in the slice.
 func containsID(ids []string, id string) bool {
 	for _, v := range ids {
 		if v == id {
@@ -252,19 +213,22 @@ func containsID(ids []string, id string) bool {
 	return false
 }
 
-// --- ElevatorState Update Integration ---
-
-// // UpdateState merges a new incoming state (newState) into the local state.
-// // It updates the requests array only when every active node (allNodes) has confirmed a request.
-// func (es *ElevatorState) UpdateState(newState ElevatorState, allNodes []string, localID string) {
-// 	// Merge the request arrays using our helper function.
-// 	es.Requests = mergeRequestArrays(es.Requests, newState.Requests, localID, allNodes)
-
-// 	// Update other state fields as necessary.
-// 	es.Floor = newState.Floor
-// 	es.Dirn = newState.Dirn
-// 	es.Behaviour = newState.Behaviour
-
-// 	// Update the button lights based on the updated requests.
-// 	es.setAllLightsSequence()
-// }
+// confirmRequest confirms a request if all nodes have confirmed.
+func confirmRequest(req Request, localID string, allNodes []string) Request {
+	if !containsID(req.ConsensusPeers, localID) {
+		req.ConsensusPeers = append(req.ConsensusPeers, localID)
+	}
+	for _, node := range allNodes {
+		if !containsID(req.ConsensusPeers, node) {
+			return req
+		}
+	}
+	switch req.State {
+	case REQ_Completed:
+		req.State = REQ_None
+	case REQ_Unconfirmed:
+		req.State = REQ_Confirmed
+	}
+	req.ConsensusPeers = []string{}
+	return req
+}

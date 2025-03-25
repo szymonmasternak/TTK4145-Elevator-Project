@@ -28,18 +28,21 @@ const (
 )
 
 type Elevator struct {
-	MetaData            *elevmetadata.ElevMetaData //this contains all elevator constant metadata
-	Network             *elevnet.ElevatorNetwork
-	IO                  *elevio.ElevatorIO
-	State               *elevstate.ElevatorState
-	RequestStates       *requestconfirmation.RequestArray
+	MetaData *elevmetadata.ElevMetaData //this contains all elevator constant metadata
+	Network  *elevnet.ElevatorNetwork
+	IO       *elevio.ElevatorIO
+	State    *elevstate.ElevatorState
+	//RequestStates       *requestconfirmation.RequestArray
+	RequestHandler      *requestconfirmation.RequestHandler
 	HallRequestAssigner *elevhallrequestassigner.HallRequestAssigner
 
-	eventChannel        chan elevevent.ElevatorEvent
-	commandChannel      chan elevcmd.ElevatorCommand
-	stateInChannel      chan elevstate.ElevatorState
-	stateOutChannel     chan elevstate.ElevatorState
-	requestArrayChannel chan requestconfirmation.RequestArrayMessage
+	eventChannel            chan elevevent.ElevatorEvent
+	commandChannel          chan elevcmd.ElevatorCommand
+	stateInChannel          chan elevstate.ElevatorState
+	stateOutChannel         chan elevstate.ElevatorState
+	requestUpdateChannel    chan requestconfirmation.RequestMessage
+	inboundReqArrayChannel  chan requestconfirmation.RequestArrayMessage
+	outboundReqArrayChannel chan requestconfirmation.RequestArrayMessage
 
 	initialised bool //set to true if initialised via NewElevator Function
 	running     bool
@@ -66,8 +69,9 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 	commandChannel := make(chan elevcmd.ElevatorCommand, COMMAND_CHANNEL_SIZE)
 	stateInChannel := make(chan elevstate.ElevatorState, 10)
 	stateOutChannel := make(chan elevstate.ElevatorState, 10)
-	requestArrayChannel := make(chan requestconfirmation.RequestArrayMessage, 10)
-
+	requestUpdatechannel := make(chan requestconfirmation.RequestMessage, 10)
+	inboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage, 10)
+	outboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage, 10)
 
 	elevIO, err := elevio.NewElevatorIO(driverIPAddress, elevconsts.N_FLOORS, eventChannel, commandChannel)
 	if err != nil {
@@ -77,11 +81,13 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
 	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateInChannel, stateOutChannel)
 	elevAssigner := elevhallrequestassigner.NewHallRequestAssigner(elevatorMetadata.Identifier, elevNetwork.Listen, eventChannel, stateOutChannel)
+	reqHandler := requestconfirmation.NewRequestHandler(elevatorMetadata.Identifier, requestUpdatechannel, inboundReqArrayChannel, outboundReqArrayChannel)
 	return &Elevator{
 		MetaData:            elevatorMetadata,
 		Network:             elevNetwork,
 		IO:                  elevIO,
 		State:               elevState,
+		RequestHandler:      reqHandler,
 		HallRequestAssigner: elevAssigner,
 		initialised:         true,
 		running:             false,
@@ -89,7 +95,9 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 		commandChannel:      commandChannel,
 		stateInChannel:      stateInChannel,
 		stateOutChannel:     stateOutChannel,
-		requestArrayChannel: requestArrayChannel,
+		requestUpdateChannel: requestUpdatechannel,
+		inboundReqArrayChannel: inboundReqArrayChannel,
+		outboundReqArrayChannel: outboundReqArrayChannel,
 	}
 }
 
@@ -125,11 +133,12 @@ func (e *Elevator) Start() {
 	e.HallRequestAssigner.Start(ctxAssigner, wgAssigner)
 	e.cancelArray = append(e.cancelArray, cancelAssigner)
 
+
+
 	go func() {
 		for {
 			select {
-			case requestArray := <-e.requestArrayChannel:
-				e.RequestStates = &requestArray.RequestArray
+			case requestArray := <-e.outboundReqArrayChannel:
 				for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
 					for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
 						if requestArray.RequestArray[floor][btn].State == requestconfirmation.REQ_Confirmed {
@@ -142,7 +151,6 @@ func (e *Elevator) Start() {
 			}
 		}
 	}()
-	go requestconfirmation.RequestConfirmer(e.MetaData.Identifier, e.State.UnconfirmedRequestChannel, e.RequestStates, e.requestArrayChannel)
 }
 
 func (e *Elevator) Stop() {
