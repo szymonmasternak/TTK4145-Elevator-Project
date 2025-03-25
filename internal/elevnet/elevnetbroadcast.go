@@ -62,7 +62,7 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 	}
 	enb.broadCastingPeriod = broadcastPeriod
 
-	udpAddress, err := net.ResolveUDPAddr("udp", "10.100.23.16:64916")
+	udpAddress, err := net.ResolveUDPAddr("udp", "10.22.138.8:9999")
 	if err != nil {
 		return fmt.Errorf("error resolving UDP Address: %v", err)
 	}

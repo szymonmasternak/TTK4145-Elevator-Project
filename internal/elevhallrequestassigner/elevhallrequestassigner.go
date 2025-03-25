@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -125,7 +126,15 @@ func getExecutableVersion() string {
 	case "windows":
 		executableVersion = "hall_request_assigner.exe"
 	case "darwin":
+		//executableVersion = "macOS_hall_request_assigner"
 		executableVersion = "macOS_hall_request_assigner"
+		// Adjust this if the file is elsewhere
+		path := filepath.Join("internal", "elevhallrequestassigner", executableVersion)
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			panic("Unable to determine absolute path: " + err.Error())
+		}
+		return absPath
 	default:
 		panic("OS not supported")
 	}
@@ -139,7 +148,7 @@ func getOptimalHallRequests(executableVersion string, input HallRequestAssignerI
 		return nil
 	}
 
-	ret, err := exec.Command("../libs/hall_request_assigner/"+executableVersion, "-i", string(jsonBytes)).CombinedOutput()
+	ret, err := exec.Command(executableVersion, "-i", string(jsonBytes)).CombinedOutput()
 	if err != nil {
 		fmt.Println("exec.Command error: ", err)
 		fmt.Println(string(ret))
