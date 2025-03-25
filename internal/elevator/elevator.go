@@ -36,13 +36,14 @@ type Elevator struct {
 	RequestHandler      *requestconfirmation.RequestHandler
 	HallRequestAssigner *elevhallrequestassigner.HallRequestAssigner
 
-	eventChannel            chan elevevent.ElevatorEvent
-	commandChannel          chan elevcmd.ElevatorCommand
-	stateInChannel          chan elevstate.ElevatorState
+	eventChannel   chan elevevent.ElevatorEvent
+	commandChannel chan elevcmd.ElevatorCommand
+
 	stateOutChannel         chan elevstate.ElevatorState
 	requestUpdateChannel    chan requestconfirmation.RequestMessage
 	inboundReqArrayChannel  chan requestconfirmation.RequestArrayMessage
 	outboundReqArrayChannel chan requestconfirmation.RequestArrayMessage
+	alivePeersChannel       chan []string
 
 	initialised bool //set to true if initialised via NewElevator Function
 	running     bool
@@ -72,6 +73,7 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 	requestUpdatechannel := make(chan requestconfirmation.RequestMessage, 10)
 	inboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage, 10)
 	outboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage, 10)
+	alivePeersChannel := make(chan []string, 10)
 
 	elevIO, err := elevio.NewElevatorIO(driverIPAddress, elevconsts.N_FLOORS, eventChannel, commandChannel)
 	if err != nil {
@@ -79,9 +81,9 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 	}
 
 	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
-	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateInChannel, stateOutChannel, outboundReqArrayChannel, inboundReqArrayChannel)
+	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateOutChannel, outboundReqArrayChannel, inboundReqArrayChannel, alivePeersChannel)
 	elevAssigner := elevhallrequestassigner.NewHallRequestAssigner(elevatorMetadata.Identifier, elevNetwork.Listen, eventChannel, stateOutChannel)
-	reqHandler := requestconfirmation.NewRequestHandler(elevatorMetadata.Identifier, requestUpdatechannel, inboundReqArrayChannel, outboundReqArrayChannel)
+	reqHandler := requestconfirmation.NewRequestHandler(elevatorMetadata.Identifier, requestUpdatechannel, inboundReqArrayChannel, outboundReqArrayChannel, alivePeersChannel)
 	return &Elevator{
 		MetaData:                elevatorMetadata,
 		Network:                 elevNetwork,
@@ -93,11 +95,11 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 		running:                 false,
 		eventChannel:            eventChannel,
 		commandChannel:          commandChannel,
-		stateInChannel:          stateInChannel,
 		stateOutChannel:         stateOutChannel,
 		requestUpdateChannel:    requestUpdatechannel,
 		inboundReqArrayChannel:  inboundReqArrayChannel,
 		outboundReqArrayChannel: outboundReqArrayChannel,
+		alivePeersChannel:       alivePeersChannel,
 	}
 }
 
