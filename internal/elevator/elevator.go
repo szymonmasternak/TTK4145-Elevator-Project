@@ -64,24 +64,26 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 		PortNumber:      portNumber,
 		Identifier:      identifier,
 	}
+	Logger.Debug().Msgf("Elevator Metadata: %v", elevatorMetadata)
 
 	eventChannel := make(chan elevevent.ElevatorEvent, EVENT_CHANNEL_SIZE)
 	commandChannel := make(chan elevcmd.ElevatorCommand, COMMAND_CHANNEL_SIZE)
-	stateInChannel := make(chan elevstate.ElevatorState, 10)
+	stateInChannel := make(chan elevstate.ElevatorState, 10) //TODO: remove from everywhere
 	stateOutChannel := make(chan elevstate.ElevatorState, 10)
 	requestUpdatechannel := make(chan requestconfirmation.RequestMessage, 10)
 	inboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage, 10)
 	outboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage, 10)
+	alivePeersChannel := make(chan []string, 10)
 
 	elevIO, err := elevio.NewElevatorIO(driverIPAddress, elevconsts.N_FLOORS, eventChannel, commandChannel)
 	if err != nil {
 		panic("Error Creating ElevIO Object")
 	}
 
-	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
-	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateInChannel, stateOutChannel, outboundReqArrayChannel, inboundReqArrayChannel)
+	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel, requestUpdatechannel)
+	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateOutChannel, outboundReqArrayChannel, inboundReqArrayChannel, alivePeersChannel)
 	elevAssigner := elevhallrequestassigner.NewHallRequestAssigner(elevatorMetadata.Identifier, elevNetwork.Listen, eventChannel, stateOutChannel)
-	reqHandler := requestconfirmation.NewRequestHandler(elevatorMetadata.Identifier, requestUpdatechannel, inboundReqArrayChannel, outboundReqArrayChannel)
+	reqHandler := requestconfirmation.NewRequestHandler(elevatorMetadata.Identifier, requestUpdatechannel, inboundReqArrayChannel, outboundReqArrayChannel, alivePeersChannel)
 	return &Elevator{
 		MetaData:                elevatorMetadata,
 		Network:                 elevNetwork,
