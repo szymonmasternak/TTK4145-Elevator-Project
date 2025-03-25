@@ -23,40 +23,38 @@ type ElevatorState struct {
 	Behaviour         elevconsts.ElevatorBehaviour
 
 	//Internal Variables
-	clearRequestVariant       elevconsts.ClearRequestVariant
-	obstructionSensor         bool
-	stopButton                bool
-	doorOpenDuration          time.Duration
-	doorOpenTime              time.Time
-	eventChannel              <-chan elevevent.ElevatorEvent
-	commandChannel            chan<- elevcmd.ElevatorCommand
-	stateInChannel            <-chan ElevatorState
-	stateOutChannel           chan<- ElevatorState
-	UnconfirmedRequestChannel chan requestconfirmation.RequestMessage `json:"-"`
+	clearRequestVariant  elevconsts.ClearRequestVariant
+	obstructionSensor    bool
+	stopButton           bool
+	doorOpenDuration     time.Duration
+	doorOpenTime         time.Time
+	eventChannel         <-chan elevevent.ElevatorEvent
+	commandChannel       chan<- elevcmd.ElevatorCommand
+	stateInChannel       <-chan ElevatorState
+	stateOutChannel      chan<- ElevatorState
+	updateRequestChannel chan<- requestconfirmation.RequestMessage
 }
 
-func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateInChannel <-chan ElevatorState, stateOutChannel chan<- ElevatorState) *ElevatorState {
+func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateInChannel <-chan ElevatorState, stateOutChannel chan<- ElevatorState, updateReqCh chan<- requestconfirmation.RequestMessage) *ElevatorState {
 	clearRequestVariant := elevconsts.InDirn
 	if clearUpDownOnArrival {
 		clearRequestVariant = elevconsts.All
 	}
 
-	unconfirmedRequestChannel := make(chan requestconfirmation.RequestMessage, 10)
-
 	elevatorState := &ElevatorState{
-		Floor:                     -1,
-		Dirn:                      elevconsts.Stop,
-		Behaviour:                 elevconsts.Idle,
-		clearRequestVariant:       clearRequestVariant,
-		doorOpenDuration:          time.Second * 3,
-		eventChannel:              eventChannel,
-		commandChannel:            commandChannel,
-		stateInChannel:            stateInChannel,
-		stateOutChannel:           stateOutChannel,
-		UnconfirmedRequestChannel: unconfirmedRequestChannel,
-		stopButton:                false,
-		obstructionSensor:         false,
-		doorOpenTime:              time.Time{}, //Returns zero value, since we dont know when it was last open
+		Floor:                -1,
+		Dirn:                 elevconsts.Stop,
+		Behaviour:            elevconsts.Idle,
+		clearRequestVariant:  clearRequestVariant,
+		doorOpenDuration:     time.Second * 3,
+		eventChannel:         eventChannel,
+		commandChannel:       commandChannel,
+		stateInChannel:       stateInChannel,
+		stateOutChannel:      stateOutChannel,
+		updateRequestChannel: updateReqCh,
+		stopButton:           false,
+		obstructionSensor:    false,
+		doorOpenTime:         time.Time{}, //Returns zero value, since we dont know when it was last open
 	}
 	return elevatorState
 }
@@ -202,7 +200,8 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 		if es.RequestsShouldClearImmediately(btnFloor, btnType) {
 			es.doorOpenTime = time.Now().Add(es.doorOpenDuration)
 		} else {
-			es.UnconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+			Log.Debug().Msgf("Adding Request to queue")
+			es.updateRequestChannel <- requestconfirmation.RequestMessage{
 				Floor:  btnFloor,
 				Button: btnType,
 				State:  requestconfirmation.REQ_Unconfirmed,
@@ -210,14 +209,16 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 		}
 
 	case elevconsts.Moving:
-		es.UnconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+		Log.Debug().Msgf("Adding Request to queue")
+		es.updateRequestChannel <- requestconfirmation.RequestMessage{
 			Floor:  btnFloor,
 			Button: btnType,
 			State:  requestconfirmation.REQ_Unconfirmed,
 		}
 
 	case elevconsts.Idle:
-		es.UnconfirmedRequestChannel <- requestconfirmation.RequestMessage{
+		Log.Debug().Msgf("Adding Request to queue")
+		es.updateRequestChannel <- requestconfirmation.RequestMessage{
 			Floor:  btnFloor,
 			Button: btnType,
 			State:  requestconfirmation.REQ_Unconfirmed,
