@@ -18,9 +18,9 @@ type ElevatorNetwork struct {
 	Listen    *ElevNetListen
 }
 
-func NewElevatorNetwork(elevMeta *elevmetadata.ElevMetaData, elevState *elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState, outboundReqCh <-chan requestconfirmation.RequestArrayMessage, inboundReqArrayCh chan<- requestconfirmation.RequestArrayMessage) *ElevatorNetwork {
+func NewElevatorNetwork(elevMeta *elevmetadata.ElevMetaData, elevState *elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState, outboundReqCh <-chan requestconfirmation.RequestArrayMessage, inboundReqArrayCh chan<- requestconfirmation.RequestArrayMessage, alivePeersChannel chan <- []string) *ElevatorNetwork {
 	return &ElevatorNetwork{
 		Broadcast: NewElevNetBroadcast(elevMeta, elevState, stateOutChannel, outboundReqCh),
-		Listen:    NewElevNetListen(elevMeta, elevState, stateOutChannel, inboundReqArrayCh),
+		Listen:    NewElevNetListen(elevMeta, elevState, stateOutChannel, inboundReqArrayCh, alivePeersChannel),
 	}
 }
