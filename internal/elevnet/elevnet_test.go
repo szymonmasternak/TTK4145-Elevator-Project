@@ -30,7 +30,6 @@ func TestStartBroadcastingListening(t *testing.T) {
 
 	expectedMsg := MakeElevatorMessage(&metaData, &state)
 
-	stateInChannel := make(chan elevstate.ElevatorState)
 	stateOutChannel := make(chan elevstate.ElevatorState)
 	inboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage)
 	outboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage)
@@ -38,7 +37,7 @@ func TestStartBroadcastingListening(t *testing.T) {
 	broadcastingPeriod := 10 * time.Millisecond
 	listeningTimeout := broadcastingPeriod * 2
 
-	network := NewElevatorNetwork(&metaData, &state, stateInChannel, stateOutChannel, outboundReqArrayChannel, inboundReqArrayChannel)
+	network := NewElevatorNetwork(&metaData, &state, stateOutChannel, outboundReqArrayChannel, inboundReqArrayChannel)
 	network.Broadcast.Start(broadcastingPeriod)
 	defer network.Broadcast.Stop()
 
@@ -159,11 +158,10 @@ func TestAckResponse(t *testing.T) {
 	}
 	var dummyState elevstate.ElevatorState
 
-	inChan := make(chan elevstate.ElevatorState)
 	outChan := make(chan elevstate.ElevatorState)
 	requestChan := make(chan requestconfirmation.RequestArrayMessage)
 
-	listener := NewElevNetListen(&meta, &dummyState, inChan, outChan, requestChan)
+	listener := NewElevNetListen(&meta, &dummyState, outChan, requestChan)
 	// Buffer the broadcast channel to avoid blocking.
 	listener.ElevatorsFoundOnNetwork = make(chan ElevatorMessage, 10)
 

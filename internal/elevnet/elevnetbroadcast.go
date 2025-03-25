@@ -21,7 +21,6 @@ type ElevatorMessage struct {
 	ElevatorData  elevmetadata.ElevMetaData
 	ElevatorState elevstate.ElevatorState
 	RequestStates requestconfirmation.RequestArray
-
 }
 
 func MakeElevatorMessage(
@@ -42,20 +41,18 @@ type ElevNetBroadcast struct {
 	metaData           *elevmetadata.ElevMetaData //internal variable
 	elevatorState      *elevstate.ElevatorState
 
-	stateInChannel  <-chan elevstate.ElevatorState
 	stateOutChannel <-chan elevstate.ElevatorState
 	//inboundReqArrayChannel  chan requestconfirmation.RequestArrayMessage
 	outboundReqArrayChannel <-chan requestconfirmation.RequestArrayMessage
 }
 
-func NewElevNetBroadcast(metaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState, outboundReqCh <-chan requestconfirmation.RequestArrayMessage) *ElevNetBroadcast {
+func NewElevNetBroadcast(metaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState, outboundReqCh <-chan requestconfirmation.RequestArrayMessage) *ElevNetBroadcast {
 	return &ElevNetBroadcast{
-		broadcasting:    false,
-		startStopCh:     make(chan int),
-		metaData:        metaData,
-		elevatorState:   elevatorState,
-		stateInChannel:  stateInChannel,
-		stateOutChannel: stateOutChannel,
+		broadcasting:            false,
+		startStopCh:             make(chan int),
+		metaData:                metaData,
+		elevatorState:           elevatorState,
+		stateOutChannel:         stateOutChannel,
 		outboundReqArrayChannel: outboundReqCh,
 	}
 }

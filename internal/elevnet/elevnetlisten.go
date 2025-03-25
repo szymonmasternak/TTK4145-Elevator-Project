@@ -33,6 +33,7 @@ type ElevNetListen struct {
 	stateInChannel          <-chan elevstate.ElevatorState
 	stateOutChannel         <-chan elevstate.ElevatorState
 	inboundReqArrayChannel  chan<- requestconfirmation.RequestArrayMessage
+	alivePeersChannel       chan<- []string
 
 	listening        bool                       // internal flag
 	startStopCh      chan int                   // for shutdown signaling
@@ -43,18 +44,18 @@ type ElevNetListen struct {
 	ElevatorState    *elevstate.ElevatorState
 }
 
-func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState, inboundReqArrayCh chan<- requestconfirmation.RequestArrayMessage) *ElevNetListen {
+func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState, inboundReqArrayCh chan<- requestconfirmation.RequestArrayMessage, alivePeersChannel chan<- []string) *ElevNetListen {
 	return &ElevNetListen{
 		ElevatorsFoundOnNetwork: make(chan ElevatorMessage, 10000), // buffered to avoid blocking
-		stateInChannel:          stateInChannel,
 		stateOutChannel:         stateOutChannel,
 		inboundReqArrayChannel:  inboundReqArrayCh,
-		
-		listening:               false,
-		startStopCh:             make(chan int),
-		conn:                    nil,
-		elevMetaData:            elevMetaData,
-		ElevatorState:           elevatorState,
+		alivePeersChannel:       alivePeersChannel,
+
+		listening:     false,
+		startStopCh:   make(chan int),
+		conn:          nil,
+		elevMetaData:  elevMetaData,
+		ElevatorState: elevatorState,
 	}
 }
 
@@ -126,6 +127,7 @@ func (enl *ElevNetListen) Start() error {
 			select {
 			case msg := <-enl.ElevatorsFoundOnNetwork:
 				enl.AddNodeToList(msg)
+				enl.BroadcastAlivePeers()
 			case val := <-enl.startStopCh:
 				if val == 0 {
 					Log.Info().Msg("Stopping Listening task...")
@@ -213,4 +215,28 @@ func (nl *ElevNetListen) GetElevatorStateMap() map[string]elevstate.ElevatorStat
 		messages[identifier] = obj.msg.ElevatorState
 	}
 	return messages
+}
+
+func (nl *ElevNetListen) GetAliveElevatorIDs() []string {
+	nl.elevatorArrayMtx.Lock()
+	defer nl.elevatorArrayMtx.Unlock()
+
+	var aliveIDs []string
+	for _, elevator := range nl.elevatorArray {
+		if !elevator.disconnected {
+			aliveIDs = append(aliveIDs, elevator.msg.ElevatorData.Identifier)
+		}
+	}
+	return aliveIDs
+}
+
+func (nl *ElevNetListen) BroadcastAlivePeers() {
+	if nl.alivePeersChannel == nil {
+		return
+	}
+	select {
+	case nl.alivePeersChannel <- nl.GetAliveElevatorIDs():
+	default:
+		Logger.Warn().Msg("alivePeersChannel full, skipping broadcast")
+	}
 }

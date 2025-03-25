@@ -55,6 +55,7 @@ type RequestHandler struct {
 	requestUpdateChannel <-chan RequestMessage      // Local messages (e.g., button presses)
 	inboundArrayChannel  <-chan RequestArrayMessage // Inbound messages from remote nodes
 	outboundArrayChannel chan<- RequestArrayMessage // Outbound messages for broadcasting local state
+	alivePeersChannel    <-chan []string
 }
 
 // NewRequestHandler creates a new RequestHandler instance.
@@ -63,6 +64,7 @@ func NewRequestHandler(
 	requestMsgChannel <-chan RequestMessage,
 	inboundArrayChannel <-chan RequestArrayMessage,
 	outboundArrayChannel chan<- RequestArrayMessage,
+	alivePeersChannel <-chan []string,
 ) *RequestHandler {
 	return &RequestHandler{
 		localID:              localID,
@@ -71,6 +73,7 @@ func NewRequestHandler(
 		requestUpdateChannel: requestMsgChannel,
 		inboundArrayChannel:  inboundArrayChannel,
 		outboundArrayChannel: outboundArrayChannel,
+		alivePeersChannel:    alivePeersChannel,
 	}
 }
 
@@ -136,6 +139,9 @@ func (handler *RequestHandler) Start() {
 						RequestArray: handler.requestMap[handler.localID],
 					}
 				}
+			case newPeers := <-handler.alivePeersChannel:
+				handler.alivePeers = newPeers
+				Log.Debug().Msgf("Alive peers updated: %v", newPeers)
 			}
 		}
 	}()
