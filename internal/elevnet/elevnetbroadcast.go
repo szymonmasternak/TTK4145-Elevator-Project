@@ -10,6 +10,7 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requestconfirmation"
 )
 
 //a reconection attempt may be necessary
@@ -19,6 +20,8 @@ var Log = logger.GetLogger()
 type ElevatorMessage struct {
 	ElevatorData  elevmetadata.ElevMetaData
 	ElevatorState elevstate.ElevatorState
+	RequestStates requestconfirmation.RequestArray
+
 }
 
 func MakeElevatorMessage(
@@ -41,9 +44,11 @@ type ElevNetBroadcast struct {
 
 	stateInChannel  <-chan elevstate.ElevatorState
 	stateOutChannel <-chan elevstate.ElevatorState
+	//inboundReqArrayChannel  chan requestconfirmation.RequestArrayMessage
+	outboundReqArrayChannel <-chan requestconfirmation.RequestArrayMessage
 }
 
-func NewElevNetBroadcast(metaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState) *ElevNetBroadcast {
+func NewElevNetBroadcast(metaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState, outboundReqCh <-chan requestconfirmation.RequestArrayMessage) *ElevNetBroadcast {
 	return &ElevNetBroadcast{
 		broadcasting:    false,
 		startStopCh:     make(chan int),
@@ -51,6 +56,7 @@ func NewElevNetBroadcast(metaData *elevmetadata.ElevMetaData, elevatorState *ele
 		elevatorState:   elevatorState,
 		stateInChannel:  stateInChannel,
 		stateOutChannel: stateOutChannel,
+		outboundReqArrayChannel: outboundReqCh,
 	}
 }
 func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
@@ -80,6 +86,7 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 		enb.broadcasting = true
 
 		var latestState elevstate.ElevatorState
+		var latestRequests requestconfirmation.RequestArray
 
 		for {
 			select {
@@ -90,11 +97,17 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 				// Just store the updated state; we’ll send it on the next ticker event.
 				latestState = updatedState
 
+			case updatedRequests, ok := <-enb.outboundReqArrayChannel:
+				if !ok {
+					return
+				}
+				latestRequests = updatedRequests.RequestArray
 			case <-timeTicker.C:
 				// On each tick, send out the *most recent* state we’ve cached.
 				msg := ElevatorMessage{
 					ElevatorData:  *enb.metaData,
 					ElevatorState: latestState,
+					RequestStates: latestRequests,
 				}
 				jsonData, err := json.Marshal(msg)
 				if err != nil {

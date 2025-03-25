@@ -71,6 +71,10 @@ func (assigner *HallRequestAssigner) Start(ctx context.Context, waitGroup *sync.
 				input := getHallRequestAssignerInput(localState, stateMap)
 				if len(input.States) != 0 {
 					optimalHallRequests := getOptimalHallRequests(assigner.executableVersion, input)
+					if optimalHallRequests == nil {
+						Log.Warn().Msgf("HallRequestAssigner got nil optimal hall requests")
+						continue
+					}
 					Log.Debug().Msgf("HallRequestAssigner got optimal hall requests")
 					optimalLocalRequests := getOptimalLocalRequests(optimalHallRequests, localState.ConfirmedRequests, assigner.localID)
 					assigner.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.UpdateHallRequestsEvent{Requests: optimalLocalRequests}}

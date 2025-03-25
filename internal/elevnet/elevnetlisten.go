@@ -12,6 +12,7 @@ import (
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requestconfirmation"
 )
 
 const ConnectionCheck = 1000 * time.Millisecond
@@ -31,6 +32,7 @@ type ElevNetListen struct {
 	ElevatorsFoundOnNetwork chan ElevatorMessage
 	stateInChannel          <-chan elevstate.ElevatorState
 	stateOutChannel         <-chan elevstate.ElevatorState
+	inboundReqArrayChannel  chan<- requestconfirmation.RequestArrayMessage
 
 	listening        bool                       // internal flag
 	startStopCh      chan int                   // for shutdown signaling
@@ -41,11 +43,13 @@ type ElevNetListen struct {
 	ElevatorState    *elevstate.ElevatorState
 }
 
-func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState) *ElevNetListen {
+func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateInChannel <-chan elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState, inboundReqArrayCh chan<- requestconfirmation.RequestArrayMessage) *ElevNetListen {
 	return &ElevNetListen{
 		ElevatorsFoundOnNetwork: make(chan ElevatorMessage, 10000), // buffered to avoid blocking
 		stateInChannel:          stateInChannel,
 		stateOutChannel:         stateOutChannel,
+		inboundReqArrayChannel:  inboundReqArrayCh,
+		
 		listening:               false,
 		startStopCh:             make(chan int),
 		conn:                    nil,
@@ -110,6 +114,10 @@ func (enl *ElevNetListen) Start() error {
 				continue
 			}
 			enl.ElevatorsFoundOnNetwork <- msg
+			enl.inboundReqArrayChannel <- requestconfirmation.RequestArrayMessage{
+				Identifier:   msg.ElevatorData.Identifier,
+				RequestArray: msg.RequestStates,
+			}
 		}
 	}()
 

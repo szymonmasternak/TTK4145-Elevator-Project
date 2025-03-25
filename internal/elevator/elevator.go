@@ -79,24 +79,24 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 	}
 
 	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel)
-	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateInChannel, stateOutChannel)
+	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateInChannel, stateOutChannel, outboundReqArrayChannel, inboundReqArrayChannel)
 	elevAssigner := elevhallrequestassigner.NewHallRequestAssigner(elevatorMetadata.Identifier, elevNetwork.Listen, eventChannel, stateOutChannel)
 	reqHandler := requestconfirmation.NewRequestHandler(elevatorMetadata.Identifier, requestUpdatechannel, inboundReqArrayChannel, outboundReqArrayChannel)
 	return &Elevator{
-		MetaData:            elevatorMetadata,
-		Network:             elevNetwork,
-		IO:                  elevIO,
-		State:               elevState,
-		RequestHandler:      reqHandler,
-		HallRequestAssigner: elevAssigner,
-		initialised:         true,
-		running:             false,
-		eventChannel:        eventChannel,
-		commandChannel:      commandChannel,
-		stateInChannel:      stateInChannel,
-		stateOutChannel:     stateOutChannel,
-		requestUpdateChannel: requestUpdatechannel,
-		inboundReqArrayChannel: inboundReqArrayChannel,
+		MetaData:                elevatorMetadata,
+		Network:                 elevNetwork,
+		IO:                      elevIO,
+		State:                   elevState,
+		RequestHandler:          reqHandler,
+		HallRequestAssigner:     elevAssigner,
+		initialised:             true,
+		running:                 false,
+		eventChannel:            eventChannel,
+		commandChannel:          commandChannel,
+		stateInChannel:          stateInChannel,
+		stateOutChannel:         stateOutChannel,
+		requestUpdateChannel:    requestUpdatechannel,
+		inboundReqArrayChannel:  inboundReqArrayChannel,
 		outboundReqArrayChannel: outboundReqArrayChannel,
 	}
 }
@@ -132,8 +132,6 @@ func (e *Elevator) Start() {
 	e.waitGroupArray = append(e.waitGroupArray, wgAssigner)
 	e.HallRequestAssigner.Start(ctxAssigner, wgAssigner)
 	e.cancelArray = append(e.cancelArray, cancelAssigner)
-
-
 
 	go func() {
 		for {

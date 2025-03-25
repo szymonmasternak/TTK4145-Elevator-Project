@@ -9,6 +9,7 @@ import (
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requestconfirmation"
 )
 
 func compareElevatorMessages(a, b ElevatorMessage) bool {
@@ -31,11 +32,13 @@ func TestStartBroadcastingListening(t *testing.T) {
 
 	stateInChannel := make(chan elevstate.ElevatorState)
 	stateOutChannel := make(chan elevstate.ElevatorState)
+	inboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage)
+	outboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage)
 
 	broadcastingPeriod := 10 * time.Millisecond
 	listeningTimeout := broadcastingPeriod * 2
 
-	network := NewElevatorNetwork(&metaData, &state, stateInChannel, stateOutChannel)
+	network := NewElevatorNetwork(&metaData, &state, stateInChannel, stateOutChannel, outboundReqArrayChannel, inboundReqArrayChannel)
 	network.Broadcast.Start(broadcastingPeriod)
 	defer network.Broadcast.Stop()
 
@@ -158,8 +161,9 @@ func TestAckResponse(t *testing.T) {
 
 	inChan := make(chan elevstate.ElevatorState)
 	outChan := make(chan elevstate.ElevatorState)
+	requestChan := make(chan requestconfirmation.RequestArrayMessage)
 
-	listener := NewElevNetListen(&meta, &dummyState, inChan, outChan)
+	listener := NewElevNetListen(&meta, &dummyState, inChan, outChan, requestChan)
 	// Buffer the broadcast channel to avoid blocking.
 	listener.ElevatorsFoundOnNetwork = make(chan ElevatorMessage, 10)
 
