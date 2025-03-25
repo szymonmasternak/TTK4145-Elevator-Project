@@ -36,13 +36,14 @@ type Elevator struct {
 	RequestHandler      *requestconfirmation.RequestHandler
 	HallRequestAssigner *elevhallrequestassigner.HallRequestAssigner
 
-	eventChannel            chan elevevent.ElevatorEvent
-	commandChannel          chan elevcmd.ElevatorCommand
-	stateInChannel          chan elevstate.ElevatorState
+	eventChannel   chan elevevent.ElevatorEvent
+	commandChannel chan elevcmd.ElevatorCommand
+
 	stateOutChannel         chan elevstate.ElevatorState
 	requestUpdateChannel    chan requestconfirmation.RequestMessage
 	inboundReqArrayChannel  chan requestconfirmation.RequestArrayMessage
 	outboundReqArrayChannel chan requestconfirmation.RequestArrayMessage
+	alivePeersChannel       chan []string
 
 	initialised bool //set to true if initialised via NewElevator Function
 	running     bool
@@ -95,11 +96,11 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 		running:                 false,
 		eventChannel:            eventChannel,
 		commandChannel:          commandChannel,
-		stateInChannel:          stateInChannel,
 		stateOutChannel:         stateOutChannel,
 		requestUpdateChannel:    requestUpdatechannel,
 		inboundReqArrayChannel:  inboundReqArrayChannel,
 		outboundReqArrayChannel: outboundReqArrayChannel,
+		alivePeersChannel:       alivePeersChannel,
 	}
 }
 
