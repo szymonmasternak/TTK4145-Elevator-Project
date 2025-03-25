@@ -1,8 +1,6 @@
 package requestconfirmation
 
 import (
-	"time"
-
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 )
@@ -97,14 +95,14 @@ func NewRequestConfirmationMap(localID string) RequestConfirmationMap {
 // updates the internal state accordingly, and broadcasts changes via the outbound channel.
 func (handler *RequestHandler) Start() {
 	Log.Debug().Msgf("RequestConfirmer started")
-	confirmationTicker := time.NewTicker(100 * time.Millisecond)
+	//confirmationTicker := time.NewTicker(100 * time.Millisecond)
 	go func() {
 		for {
 			select {
 			// Process inbound messages from remote nodes.
 			case incomingMsg := <-handler.inboundArrayChannel:
 				Log.Debug().Msgf("Inbound RequestArrayMessage received from %s", incomingMsg.Identifier)
-				handler.alivePeers = MergeStringArrays(handler.alivePeers, []string{incomingMsg.Identifier})
+				//handler.alivePeers = MergeStringArrays(handler.alivePeers, []string{incomingMsg.Identifier})
 				handler.updateLocalRequestMap(incomingMsg.Identifier, incomingMsg.RequestArray)
 				Log.Debug().Msgf("Local map for %s: %v", handler.localID, handler.requestMap[handler.localID])
 				// Broadcast updated local state.
@@ -123,6 +121,9 @@ func (handler *RequestHandler) Start() {
 					tempArr[reqMsg.Floor][reqMsg.Button].State = REQ_Completed
 				}
 				handler.requestMap[handler.localID] = tempArr
+				if len(handler.alivePeers) == 1 {
+					handler.updateLocalRequestMap(handler.localID, handler.requestMap[handler.localID])
+				}
 				handler.outboundArrayChannel <- RequestArrayMessage{
 					Identifier:   handler.localID,
 					RequestArray: handler.requestMap[handler.localID],
@@ -130,15 +131,16 @@ func (handler *RequestHandler) Start() {
 				Log.Debug().Msgf("Updated local map: %v", handler.requestMap[handler.localID])
 
 			// Periodic update using the ticker.
-			case <-confirmationTicker.C:
-				// For example, only update if only the local node is active.
-				if len(handler.alivePeers) == 1 {
-					handler.updateLocalRequestMap(handler.localID, handler.requestMap[handler.localID])
-					handler.outboundArrayChannel <- RequestArrayMessage{
-						Identifier:   handler.localID,
-						RequestArray: handler.requestMap[handler.localID],
-					}
-				}
+			// case <-confirmationTicker.C:
+			// 	// For example, only update if only the local node is active.
+			// 	if len(handler.alivePeers) == 1 {
+			// 		handler.updateLocalRequestMap(handler.localID, handler.requestMap[handler.localID])
+			// 		Log.Debug().Msgf("Local map updated: %v", handler.requestMap[handler.localID])
+			// 		handler.outboundArrayChannel <- RequestArrayMessage{
+			// 			Identifier:   handler.localID,
+			// 			RequestArray: handler.requestMap[handler.localID],
+			// 		}
+			// 	}
 			case newPeers := <-handler.alivePeersChannel:
 				handler.alivePeers = newPeers
 				Log.Debug().Msgf("Alive peers updated: %v", newPeers)

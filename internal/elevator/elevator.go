@@ -135,6 +135,7 @@ func (e *Elevator) Start() {
 	e.waitGroupArray = append(e.waitGroupArray, wgAssigner)
 	e.HallRequestAssigner.Start(ctxAssigner, wgAssigner)
 	e.cancelArray = append(e.cancelArray, cancelAssigner)
+	e.RequestHandler.Start()
 
 	go func() {
 		for {
