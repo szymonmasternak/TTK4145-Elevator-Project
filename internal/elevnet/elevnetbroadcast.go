@@ -18,9 +18,9 @@ import (
 var Log = logger.GetLogger()
 
 type ElevatorMessage struct {
-	ElevatorData  elevmetadata.ElevMetaData
-	ElevatorState elevstate.ElevatorState
-	RequestStates requestconfirmation.RequestArray
+	ElevatorData     elevmetadata.ElevMetaData
+	ElevatorState    elevstate.ElevatorState
+	RequestStatesMsg requestconfirmation.RequestArrayMessage
 }
 
 func MakeElevatorMessage(
@@ -114,7 +114,7 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 		enb.broadcasting = true
 
 		var latestState elevstate.ElevatorState
-		var latestRequests requestconfirmation.RequestArray
+		var latestRequests requestconfirmation.RequestArrayMessage
 
 		for {
 			select {
@@ -129,14 +129,14 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 				if !ok {
 					return
 				}
-				latestRequests = updatedRequests.RequestArray
+				latestRequests = updatedRequests
 
 			case <-timeTicker.C:
 				// On each tick, send out the most recent state.
 				msg := ElevatorMessage{
-					ElevatorData:  *enb.metaData,
-					ElevatorState: latestState,
-					RequestStates: latestRequests,
+					ElevatorData:     *enb.metaData,
+					ElevatorState:    latestState,
+					RequestStatesMsg: latestRequests,
 				}
 				jsonData, err := json.Marshal(msg)
 				if err != nil {

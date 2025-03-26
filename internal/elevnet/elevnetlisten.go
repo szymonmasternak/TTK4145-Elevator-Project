@@ -119,10 +119,7 @@ func (enl *ElevNetListen) Start() error {
 				continue
 			}
 			enl.ElevatorsFoundOnNetwork <- msg
-			enl.inboundReqArrayChannel <- requestconfirmation.RequestArrayMessage{
-				Identifier:   msg.ElevatorData.Identifier,
-				RequestArray: msg.RequestStates,
-			}
+			enl.inboundReqArrayChannel <- msg.RequestStatesMsg
 		}
 	}()
 
