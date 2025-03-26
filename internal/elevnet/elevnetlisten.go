@@ -15,8 +15,10 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requestconfirmation"
 )
 
-const ConnectionCheck = 1000 * time.Millisecond
-const WaitForReconnection = 2000 * time.Millisecond
+const (
+	CONNECTION_CHECK   = 1000 * time.Millisecond
+	WAIT_FOR_RECONNECT = 2000 * time.Millisecond
+)
 
 // ElevatorListObject holds a received message and its status.
 type ElevatorListObject struct {
@@ -38,7 +40,7 @@ type ElevNetListen struct {
 	listening        bool                       // internal flag
 	startStopCh      chan int                   // for shutdown signaling
 	conn             net.PacketConn             // Changed to use net.PacketConn
-	elevMetaData     *elevmetadata.ElevMetaData // metadata for this elevator
+	metaData         *elevmetadata.ElevMetaData // metadata for this elevator
 	elevatorArray    []ElevatorListObject
 	elevatorArrayMtx sync.Mutex
 	ElevatorState    *elevstate.ElevatorState
@@ -54,17 +56,13 @@ func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *el
 		listening:     false,
 		startStopCh:   make(chan int),
 		conn:          nil,
-		elevMetaData:  elevMetaData,
+		metaData:      elevMetaData,
 		ElevatorState: elevatorState,
 	}
 }
 
 // Start starts the listener by binding to the UDP address and launching goroutines.
 func (enl *ElevNetListen) Start() error {
-	// localAddr, err := net.ResolveUDPAddr("udp", enl.elevMetaData.IpAddress+":9999")
-	// if err != nil {
-	// 	return fmt.Errorf("error resolving local UDP address: %v", err)
-	// }
 
 	// Create UDP socket manually with SO_REUSEADDR
 	s, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP)
@@ -189,7 +187,7 @@ func (nl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
 	filtered := nl.elevatorArray[:0] // Keep only valid elements
 
 	for i := 0; i < len(nl.elevatorArray); i++ {
-		if time.Now().Before(nl.elevatorArray[i].timeSeen.Add(ConnectionCheck)) {
+		if time.Now().Before(nl.elevatorArray[i].timeSeen.Add(CONNECTION_CHECK)) {
 			filtered = append(filtered, nl.elevatorArray[i]) // Keep only non-stale nodes
 			fmt.Printf("%v, ", nl.elevatorArray[i].msg.ElevatorData.Identifier)
 		} else {
@@ -198,7 +196,7 @@ func (nl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
 				nl.elevatorArray[i].timeDisconnected = time.Now()
 			}
 			Logger.Info().Msg("Elevator disconnected, waiting for reconnect")
-			if time.Now().Before(nl.elevatorArray[i].timeDisconnected.Add(WaitForReconnection)) {
+			if time.Now().Before(nl.elevatorArray[i].timeDisconnected.Add(WAIT_FOR_RECONNECT)) {
 				filtered = append(filtered, nl.elevatorArray[i])
 			} else {
 				Logger.Info().Msg("Elevator didn't reconnect in time, removing from list")

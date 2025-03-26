@@ -203,11 +203,12 @@ func TestNewRequestConfirmationMap(t *testing.T) {
 // Since Start spawns a goroutine, we use buffered channels and a timeout to test one cycle.
 func TestStart_Basic(t *testing.T) {
 	localID := "node1"
-	reqMsgChan := make(chan RequestMessage)
-	inboundChan := make(chan RequestArrayMessage, 2)
-	outboundChan := make(chan RequestArrayMessage, 2)
+	reqMsgChannel := make(chan RequestMessage)
+	inboundChannel := make(chan RequestArrayMessage, 2)
+	outboundChannel := make(chan RequestArrayMessage, 2)
+	alivePeersChannel := make(chan []string)
 
-	handler := NewRequestHandler(localID, reqMsgChan, inboundChan, outboundChan)
+	handler := NewRequestHandler(localID, reqMsgChannel, inboundChannel, outboundChannel, alivePeersChannel)
 	// Ensure alivePeers is set.
 	handler.alivePeers = []string{localID}
 
@@ -220,11 +221,11 @@ func TestStart_Basic(t *testing.T) {
 		State:          REQ_Unconfirmed,
 		ConsensusPeers: []string{"node2"},
 	}
-	inboundChan <- RequestArrayMessage{Identifier: "node2", RequestArray: remoteArr}
+	inboundChannel <- RequestArrayMessage{Identifier: "node2", RequestArray: remoteArr}
 
 	// Wait for an outbound message from the handler.
 	select {
-	case msg := <-outboundChan:
+	case msg := <-outboundChannel:
 		if msg.Identifier != localID {
 			t.Errorf("expected identifier %s, got %s", localID, msg.Identifier)
 		}

@@ -91,7 +91,7 @@ func (assigner *HallRequestAssigner) Start(ctx context.Context, waitGroup *sync.
 func getHallRequestAssignerElevatorState(elevatorState *elevstate.ElevatorState) HallRequestAssignerElevatorState {
 	var cabRequests [elevconsts.N_FLOORS]bool
 	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
-		if elevatorState.ConfirmedRequests[floor][elevconsts.Cab] != 0 {
+		if elevatorState.ConfirmedRequests[floor][elevconsts.CAB] != 0 {
 			cabRequests[floor] = true
 		}
 	}
@@ -108,8 +108,8 @@ func getHallRequestAssignerInput(localElevatorState elevstate.ElevatorState, ele
 
 	hallRequests := [elevconsts.N_FLOORS][2]bool{}
 	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
-		hallRequests[floor][elevconsts.HallUp] = localElevatorState.ConfirmedRequests[floor][elevconsts.HallUp] != 0
-		hallRequests[floor][elevconsts.HallDown] = localElevatorState.ConfirmedRequests[floor][elevconsts.HallDown] != 0
+		hallRequests[floor][elevconsts.HALL_UP] = localElevatorState.ConfirmedRequests[floor][elevconsts.HALL_UP] != 0
+		hallRequests[floor][elevconsts.HALL_DOWN] = localElevatorState.ConfirmedRequests[floor][elevconsts.HALL_DOWN] != 0
 	}
 
 	states := make(map[string]HallRequestAssignerElevatorState)
@@ -171,9 +171,9 @@ func getOptimalHallRequests(executableVersion string, input HallRequestAssignerI
 func getOptimalLocalRequests(optimalHallRequests map[string][][2]bool, originalLocalRequests [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int, localID string) [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int {
 	localRequests := [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int{}
 	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
-		localRequests[floor][elevconsts.HallUp] = toInt(optimalHallRequests[localID][floor][elevconsts.HallUp])
-		localRequests[floor][elevconsts.HallDown] = toInt(optimalHallRequests[localID][floor][elevconsts.HallDown])
-		localRequests[floor][elevconsts.Cab] = originalLocalRequests[floor][elevconsts.Cab]
+		localRequests[floor][elevconsts.HALL_UP] = toInt(optimalHallRequests[localID][floor][elevconsts.HALL_UP])
+		localRequests[floor][elevconsts.HALL_DOWN] = toInt(optimalHallRequests[localID][floor][elevconsts.HALL_DOWN])
+		localRequests[floor][elevconsts.CAB] = originalLocalRequests[floor][elevconsts.CAB]
 	}
 	return localRequests
 }

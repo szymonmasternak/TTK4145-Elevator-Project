@@ -36,17 +36,17 @@ type Elevator struct {
 	RequestHandler      *requestconfirmation.RequestHandler
 	HallRequestAssigner *elevhallrequestassigner.HallRequestAssigner
 
-	eventChannel   chan elevevent.ElevatorEvent
-	commandChannel chan elevcmd.ElevatorCommand
+	EventChannel   chan elevevent.ElevatorEvent
+	CommandChannel chan elevcmd.ElevatorCommand
 
-	stateOutChannel         chan elevstate.ElevatorState
-	requestUpdateChannel    chan requestconfirmation.RequestMessage
-	inboundReqArrayChannel  chan requestconfirmation.RequestArrayMessage
-	outboundReqArrayChannel chan requestconfirmation.RequestArrayMessage
-	alivePeersChannel       chan []string
+	StateOutChannel         chan elevstate.ElevatorState
+	RequestUpdateChannel    chan requestconfirmation.RequestMessage
+	InboundReqArrayChannel  chan requestconfirmation.RequestArrayMessage
+	OutboundReqArrayChannel chan requestconfirmation.RequestArrayMessage
+	AlivePeersChannel       chan []string
 
-	initialised bool //set to true if initialised via NewElevator Function
-	running     bool
+	Initialised bool //set to true if initialised via NewElevator Function
+	Running     bool
 
 	//used for graceful shutdown
 	waitGroupArray []*sync.WaitGroup
@@ -92,24 +92,24 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 		State:                   elevState,
 		RequestHandler:          reqHandler,
 		HallRequestAssigner:     elevAssigner,
-		initialised:             true,
-		running:                 false,
-		eventChannel:            eventChannel,
-		commandChannel:          commandChannel,
-		stateOutChannel:         stateOutChannel,
-		requestUpdateChannel:    requestUpdatechannel,
-		inboundReqArrayChannel:  inboundReqArrayChannel,
-		outboundReqArrayChannel: outboundReqArrayChannel,
-		alivePeersChannel:       alivePeersChannel,
+		Initialised:             true,
+		Running:                 false,
+		EventChannel:            eventChannel,
+		CommandChannel:          commandChannel,
+		StateOutChannel:         stateOutChannel,
+		RequestUpdateChannel:    requestUpdatechannel,
+		InboundReqArrayChannel:  inboundReqArrayChannel,
+		OutboundReqArrayChannel: outboundReqArrayChannel,
+		AlivePeersChannel:       alivePeersChannel,
 	}
 }
 
 func (e *Elevator) Start() {
-	if !e.initialised {
+	if !e.Initialised {
 		Logger.Error().Msg("Elevator not initialised")
 		return
 	}
-	if e.running {
+	if e.Running {
 		Logger.Error().Msg("Elevator already running")
 		return
 	}
@@ -140,7 +140,7 @@ func (e *Elevator) Start() {
 	go func() {
 		for {
 			select {
-			case requestArray := <-e.outboundReqArrayChannel:
+			case requestArray := <-e.OutboundReqArrayChannel:
 				for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
 					for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
 						if requestArray.RequestArray[floor][btn].State == requestconfirmation.REQ_Confirmed {
@@ -156,11 +156,11 @@ func (e *Elevator) Start() {
 }
 
 func (e *Elevator) Stop() {
-	if !e.initialised {
+	if !e.Initialised {
 		Logger.Error().Msg("Elevator not initialised")
 		return
 	}
-	if !e.running {
+	if !e.Running {
 		Logger.Error().Msg("Elevator not running, so cannot stop elevator")
 		return
 	}
@@ -174,5 +174,5 @@ func (e *Elevator) Stop() {
 	}
 
 	Logger.Debug().Msg("Stopped Elevator")
-	e.running = false
+	e.Running = false
 }

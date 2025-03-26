@@ -164,7 +164,7 @@ func TestNewElevatorStateCommands(t *testing.T) {
 	if !elevState.stopButton {
 		t.Errorf("Expected stop button to be true, got %v", elevState.stopButton)
 	}
-	if elevState.Dirn != elevconsts.Stop {
+	if elevState.Dirn != elevconsts.STOP {
 		t.Errorf("Expected direction to be Stop, got %v", elevState.Dirn)
 	}
 
@@ -244,9 +244,9 @@ func TestDoorOpenDuration(t *testing.T) {
 		t.Errorf("Expected floor to be %v, got %v", floorStart, elevState.Floor)
 	}
 
-	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorStart, Button: elevconsts.HallUp}}
+	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorStart, Button: elevconsts.HALL_UP}}
 	time.Sleep(TEST_DELAY)
-	if elevState.Behaviour != elevconsts.DoorOpen {
+	if elevState.Behaviour != elevconsts.DOOR_OPEN {
 		t.Errorf("Expected door to be open immediately after button press")
 	}
 
@@ -306,13 +306,13 @@ func TestObstruction(t *testing.T) {
 	stopClearingChannel <- true
 
 	time.Sleep(TEST_DELAY)
-	if elevState.Behaviour != elevconsts.Idle {
+	if elevState.Behaviour != elevconsts.IDLE {
 		t.Errorf("Expected elevator to be idle by default %v", elevState.Behaviour)
 	}
 
-	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorStart, Button: elevconsts.HallUp}}
+	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorStart, Button: elevconsts.HALL_UP}}
 	time.Sleep(TEST_DELAY)
-	if elevState.Behaviour != elevconsts.DoorOpen {
+	if elevState.Behaviour != elevconsts.DOOR_OPEN {
 		t.Errorf("Expected door to be open immediately after button press")
 	}
 
@@ -387,10 +387,10 @@ func TestStopButton(t *testing.T) {
 	stopClearingChannel <- true
 
 	time.Sleep(TEST_DELAY)
-	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest, Button: elevconsts.Cab}}
+	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest, Button: elevconsts.CAB}}
 	cmds := waitForCommands(commandChannel, TEST_DELAY)
 	checkOrder(t, cmds, []elevcmd.ElevatorCommand{
-		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Up}},
+		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.UP}},
 	})
 
 	// Simulate stop button press.
@@ -399,12 +399,12 @@ func TestStopButton(t *testing.T) {
 
 	cmds2 := waitForCommands(commandChannel, TEST_DELAY)
 	checkOrder(t, cmds2, []elevcmd.ElevatorCommand{
-		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Stop}},
+		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.STOP}},
 	})
 	if !elevState.stopButton {
 		t.Errorf("Expected stop button to be true")
 	}
-	if elevState.Dirn != elevconsts.Stop {
+	if elevState.Dirn != elevconsts.STOP {
 		t.Errorf("Expected elevator direction to be Stop, got %d", elevState.Dirn)
 	}
 }
@@ -451,9 +451,9 @@ func TestCabCall(t *testing.T) {
 	stopClearingChannel <- true
 
 	// Simulate cab call for floor 3.
-	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest, Button: elevconsts.Cab}}
+	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest, Button: elevconsts.CAB}}
 	time.Sleep(TEST_DELAY)
-	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.Cab] != 1 {
+	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.CAB] != 1 {
 		t.Errorf("Expected cab call for floor %v to be registered", floorButtonRequest)
 	}
 
@@ -467,15 +467,15 @@ func TestCabCall(t *testing.T) {
 	arrivalCmds := waitForCommands(commandChannel, TEST_DELAY)
 	expectedSequence := []elevcmd.ElevatorCommand{
 		{Value: elevcmd.FloorIndicatorCommand{Floor: floorButtonRequest}},
-		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Stop}},
+		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.STOP}},
 		{Value: elevcmd.DoorOpenCommand{}},
 	}
 	checkOrder(t, arrivalCmds, expectedSequence)
 
 	// Wait for door to close
 	time.Sleep(elevState.doorOpenDuration + TEST_DELAY)
-	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.Cab] != 0 {
-		t.Errorf("Expected cab call for floor %v to be cleared after arrival; got %v", floorButtonRequest, elevState.ConfirmedRequests[floorButtonRequest][elevconsts.Cab])
+	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.CAB] != 0 {
+		t.Errorf("Expected cab call for floor %v to be cleared after arrival; got %v", floorButtonRequest, elevState.ConfirmedRequests[floorButtonRequest][elevconsts.CAB])
 	}
 }
 
@@ -521,9 +521,9 @@ func TestHallCall(t *testing.T) {
 	stopClearingChannel <- true
 
 	// Simulate hall call
-	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest, Button: elevconsts.HallUp}}
+	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest, Button: elevconsts.HALL_UP}}
 	time.Sleep(TEST_DELAY)
-	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.HallUp] != 1 {
+	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.HALL_UP] != 1 {
 		t.Errorf("Expected hall call for floor %v (HallUp) to be registered in state", floorButtonRequest)
 	}
 
@@ -533,13 +533,13 @@ func TestHallCall(t *testing.T) {
 	arrivalCmds := waitForCommands(commandChannel, TEST_DELAY)
 	expectedSequence := []elevcmd.ElevatorCommand{
 		{Value: elevcmd.FloorIndicatorCommand{Floor: floorButtonRequest}},
-		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Stop}},
+		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.STOP}},
 	}
 	checkOrder(t, arrivalCmds, expectedSequence)
 
 	// Wait for door open duration plus a buffer and verify the hall call is cleared.
 	time.Sleep(elevState.doorOpenDuration + TEST_DELAY)
-	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.HallUp] != 0 {
+	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.HALL_UP] != 0 {
 		t.Errorf("Expected hall call for floor %v to be cleared", floorButtonRequest)
 	}
 }
@@ -587,9 +587,9 @@ func TestFullJourney(t *testing.T) {
 	stopClearingChannel <- true
 
 	// hall call down
-	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest, Button: elevconsts.HallDown}}
+	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest, Button: elevconsts.HALL_DOWN}}
 	time.Sleep(TEST_DELAY)
-	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.HallDown] != 1 {
+	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.HALL_DOWN] != 1 {
 		t.Errorf("Expected hall call for floor %v (HallDown)", floorButtonRequest)
 	}
 
@@ -600,10 +600,10 @@ func TestFullJourney(t *testing.T) {
 	hallCmds := waitForCommands(commandChannel, TEST_DELAY)
 	checkOrder(t, hallCmds, []elevcmd.ElevatorCommand{
 		{Value: elevcmd.FloorIndicatorCommand{Floor: floorButtonRequest}},
-		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Stop}},
+		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.STOP}},
 		{Value: elevcmd.DoorOpenCommand{}},
 	})
-	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.HallDown] != 0 {
+	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.HALL_DOWN] != 0 {
 		t.Errorf("Expected hall call for floor %v to be cleared", floorButtonRequest)
 	}
 	doorCloseCmds := waitForCommands(commandChannel, elevState.doorOpenDuration+TEST_DELAY)
@@ -612,14 +612,14 @@ func TestFullJourney(t *testing.T) {
 	})
 
 	// cab call for floor 3
-	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest2, Button: elevconsts.Cab}}
+	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest2, Button: elevconsts.CAB}}
 	time.Sleep(TEST_DELAY)
-	if elevState.ConfirmedRequests[floorButtonRequest2][elevconsts.Cab] != 1 {
+	if elevState.ConfirmedRequests[floorButtonRequest2][elevconsts.CAB] != 1 {
 		t.Errorf("Expected cab call for floor %v to be registered", floorButtonRequest2)
 	}
 	UpMotorDirectionCmd := waitForCommands(commandChannel, TEST_DELAY)
 	checkOrder(t, UpMotorDirectionCmd, []elevcmd.ElevatorCommand{
-		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Up}},
+		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.UP}},
 	})
 
 	// Simulate arriving at floor 3.
@@ -628,11 +628,11 @@ func TestFullJourney(t *testing.T) {
 	cabCmds := waitForCommands(commandChannel, TEST_DELAY)
 	checkOrder(t, cabCmds, []elevcmd.ElevatorCommand{
 		{Value: elevcmd.FloorIndicatorCommand{Floor: floorButtonRequest2}},
-		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Stop}},
+		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.STOP}},
 		{Value: elevcmd.DoorOpenCommand{}},
 	})
 	time.Sleep(elevState.doorOpenDuration + TEST_DELAY)
-	if elevState.ConfirmedRequests[floorButtonRequest2][elevconsts.Cab] != 0 {
+	if elevState.ConfirmedRequests[floorButtonRequest2][elevconsts.CAB] != 0 {
 		t.Errorf("Expected cab call for floor %v to be cleared", floorButtonRequest2)
 	}
 	if elevState.Floor != floorButtonRequest2 {
@@ -669,12 +669,12 @@ func TestInitialisationBetweenFloors(t *testing.T) {
 
 	cmds := waitForCommands(commandChannel, TEST_DELAY)
 	checkOrder(t, cmds, []elevcmd.ElevatorCommand{
-		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Down}},
+		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.DOWN}},
 	})
-	if elevState.Dirn != elevconsts.Down {
+	if elevState.Dirn != elevconsts.DOWN {
 		t.Errorf("Expected elevator Dirn to be Down, got %v", elevState.Dirn)
 	}
-	if elevState.Behaviour != elevconsts.Moving {
+	if elevState.Behaviour != elevconsts.MOVING {
 		t.Errorf("Expected elevator Behaviour to be Moving, got %v", elevState.Behaviour)
 	}
 }

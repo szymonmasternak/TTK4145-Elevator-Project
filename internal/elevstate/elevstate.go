@@ -36,15 +36,15 @@ type ElevatorState struct {
 }
 
 func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateInChannel <-chan ElevatorState, stateOutChannel chan<- ElevatorState, updateReqCh chan<- requestconfirmation.RequestMessage) *ElevatorState {
-	clearRequestVariant := elevconsts.InDirn
+	clearRequestVariant := elevconsts.IN_DIRN
 	if clearUpDownOnArrival {
-		clearRequestVariant = elevconsts.All
+		clearRequestVariant = elevconsts.ALL
 	}
 
 	elevatorState := &ElevatorState{
 		Floor:                -1,
-		Dirn:                 elevconsts.Stop,
-		Behaviour:            elevconsts.Idle,
+		Dirn:                 elevconsts.STOP,
+		Behaviour:            elevconsts.IDLE,
 		clearRequestVariant:  clearRequestVariant,
 		doorOpenDuration:     time.Second * 3,
 		eventChannel:         eventChannel,
@@ -80,12 +80,12 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 
 	if es.Floor == -1 {
 		Log.Info().Msgf("Elevator initialized between floors, moving down to nearest floor")
-		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Down}}
-		es.Dirn = elevconsts.Down
-		es.Behaviour = elevconsts.Moving
-		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Down}}
-		es.Dirn = elevconsts.Down
-		es.Behaviour = elevconsts.Moving
+		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.DOWN}}
+		es.Dirn = elevconsts.DOWN
+		es.Behaviour = elevconsts.MOVING
+		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.DOWN}}
+		es.Dirn = elevconsts.DOWN
+		es.Behaviour = elevconsts.MOVING
 	}
 
 	BroadcastTicker := time.NewTicker(1 * time.Second)
@@ -98,9 +98,9 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 			select {
 			case <-ctx.Done():
 				Log.Warn().Msgf("ElevatorState Go routine has been signaled to stop")
-				if es.Dirn != elevconsts.Stop {
+				if es.Dirn != elevconsts.STOP {
 					Log.Warn().Msgf("Elevator is not stopped, stopping it")
-					es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Stop}}
+					es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.STOP}}
 				}
 				return
 			case event := <-es.eventChannel:
@@ -129,7 +129,7 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 				es.BroadcastState()
 			default:
 				if time.Now().After(es.doorOpenTime.Add(es.doorOpenDuration)) {
-					if es.Behaviour == elevconsts.DoorOpen {
+					if es.Behaviour == elevconsts.DOOR_OPEN {
 						if !es.stopButton {
 							Log.Warn().Msgf("Door timeout Event")
 							es.handleDoorTimeout()
@@ -157,7 +157,7 @@ func (es *ElevatorState) Print() {
 	for f := elevconsts.N_FLOORS - 1; f >= 0; f-- {
 		Log.Info().Msgf("  | %d", f)
 		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
-			if (f == elevconsts.N_FLOORS-1 && btn == int(elevconsts.HallUp)) || (f == 0 && btn == int(elevconsts.HallDown)) {
+			if (f == elevconsts.N_FLOORS-1 && btn == int(elevconsts.HALL_UP)) || (f == 0 && btn == int(elevconsts.HALL_DOWN)) {
 				Log.Info().Msgf("|     ")
 			} else {
 				if es.ConfirmedRequests[f][btn] != 0 {
@@ -196,7 +196,7 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 	}
 
 	switch es.Behaviour {
-	case elevconsts.DoorOpen:
+	case elevconsts.DOOR_OPEN:
 		if es.RequestsShouldClearImmediately(btnFloor, btnType) {
 			es.doorOpenTime = time.Now().Add(es.doorOpenDuration)
 		} else {
@@ -208,7 +208,7 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 			}
 		}
 
-	case elevconsts.Moving:
+	case elevconsts.MOVING:
 		Log.Debug().Msgf("Adding Request to queue")
 		es.updateRequestChannel <- requestconfirmation.RequestMessage{
 			Floor:  btnFloor,
@@ -216,7 +216,7 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 			State:  requestconfirmation.REQ_Unconfirmed,
 		}
 
-	case elevconsts.Idle:
+	case elevconsts.IDLE:
 		Log.Debug().Msgf("Adding Request to queue")
 		es.updateRequestChannel <- requestconfirmation.RequestMessage{
 			Floor:  btnFloor,
@@ -226,12 +226,12 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 		es.Dirn, es.Behaviour = es.RequestsChooseDirection()
 
 		switch es.Behaviour {
-		case elevconsts.DoorOpen:
+		case elevconsts.DOOR_OPEN:
 			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
 			es.doorOpenTime = time.Now()
 			es.RequestsClearAtCurrentFloor()
 
-		case elevconsts.Moving:
+		case elevconsts.MOVING:
 			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: es.Dirn}}
 		}
 	}
@@ -244,20 +244,20 @@ func (es *ElevatorState) handleFloorArrival(newFloor int) {
 	es.Floor = newFloor
 	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.FloorIndicatorCommand{Floor: es.Floor}}
 
-	if es.Behaviour == elevconsts.Moving && es.RequestsShouldStop() {
-		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Stop}}
+	if es.Behaviour == elevconsts.MOVING && es.RequestsShouldStop() {
+		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: elevconsts.STOP}}
 		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
 
 		es.doorOpenTime = time.Now()
 		es.RequestsClearAtCurrentFloor()
 		es.setAllLightsSequence()
-		es.Behaviour = elevconsts.DoorOpen
+		es.Behaviour = elevconsts.DOOR_OPEN
 	}
 }
 
 // Handles door timeout event
 func (es *ElevatorState) handleDoorTimeout() {
-	if es.obstructionSensor && es.Behaviour == elevconsts.DoorOpen {
+	if es.obstructionSensor && es.Behaviour == elevconsts.DOOR_OPEN {
 		Log.Warn().Msgf("Obstruction Detected, not trying to close door for another %v", es.doorOpenDuration.String())
 		es.doorOpenTime = time.Now()
 		return
@@ -267,12 +267,12 @@ func (es *ElevatorState) handleDoorTimeout() {
 	es.Dirn, es.Behaviour = es.RequestsChooseDirection()
 
 	switch es.Behaviour {
-	case elevconsts.DoorOpen:
+	case elevconsts.DOOR_OPEN:
 		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
 		es.doorOpenTime = time.Now()
 		es.RequestsClearAtCurrentFloor()
 		es.setAllLightsSequence()
-	case elevconsts.Moving:
+	case elevconsts.MOVING:
 		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: es.Dirn}}
 	}
 }
@@ -281,7 +281,7 @@ func (es *ElevatorState) handleStopButton(stopButtonState bool) {
 	es.stopButton = stopButtonState
 
 	if es.stopButton {
-		es.Dirn = elevconsts.Stop
+		es.Dirn = elevconsts.STOP
 	} else {
 		es.Dirn, es.Behaviour = es.RequestsChooseDirection()
 	}

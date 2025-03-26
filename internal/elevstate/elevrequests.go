@@ -39,48 +39,48 @@ func (es *ElevatorState) requestsHere() bool {
 // Determines the direction and behavior of the elevator
 func (es *ElevatorState) RequestsChooseDirection() (elevconsts.Dirn, elevconsts.ElevatorBehaviour) {
 	switch es.Dirn {
-	case elevconsts.Up:
+	case elevconsts.UP:
 		switch {
 		case es.requestsAbove():
-			return elevconsts.Up, elevconsts.Moving
+			return elevconsts.UP, elevconsts.MOVING
 		case es.requestsHere():
-			return elevconsts.Down, elevconsts.DoorOpen
+			return elevconsts.DOWN, elevconsts.DOOR_OPEN
 		case es.requestsBelow():
-			return elevconsts.Down, elevconsts.Moving
+			return elevconsts.DOWN, elevconsts.MOVING
 		}
-	case elevconsts.Down:
+	case elevconsts.DOWN:
 		switch {
 		case es.requestsBelow():
-			return elevconsts.Down, elevconsts.Moving
+			return elevconsts.DOWN, elevconsts.MOVING
 		case es.requestsHere():
-			return elevconsts.Up, elevconsts.DoorOpen
+			return elevconsts.UP, elevconsts.DOOR_OPEN
 		case es.requestsAbove():
-			return elevconsts.Up, elevconsts.Moving
+			return elevconsts.UP, elevconsts.MOVING
 		}
-	case elevconsts.Stop:
+	case elevconsts.STOP:
 		switch {
 		case es.requestsHere():
-			return elevconsts.Stop, elevconsts.DoorOpen
+			return elevconsts.STOP, elevconsts.DOOR_OPEN
 		case es.requestsAbove():
-			return elevconsts.Up, elevconsts.Moving
+			return elevconsts.UP, elevconsts.MOVING
 		case es.requestsBelow():
-			return elevconsts.Down, elevconsts.Moving
+			return elevconsts.DOWN, elevconsts.MOVING
 		}
 	}
-	return elevconsts.Stop, elevconsts.Idle
+	return elevconsts.STOP, elevconsts.IDLE
 }
 
 func (es *ElevatorState) RequestsShouldStop() bool {
 	switch es.Dirn {
-	case elevconsts.Down:
-		return es.ConfirmedRequests[es.Floor][elevconsts.HallDown] != 0 ||
-			es.ConfirmedRequests[es.Floor][elevconsts.Cab] != 0 ||
+	case elevconsts.DOWN:
+		return es.ConfirmedRequests[es.Floor][elevconsts.HALL_DOWN] != 0 ||
+			es.ConfirmedRequests[es.Floor][elevconsts.CAB] != 0 ||
 			!es.requestsBelow()
-	case elevconsts.Up:
-		return es.ConfirmedRequests[es.Floor][elevconsts.HallUp] != 0 ||
-			es.ConfirmedRequests[es.Floor][elevconsts.Cab] != 0 ||
+	case elevconsts.UP:
+		return es.ConfirmedRequests[es.Floor][elevconsts.HALL_UP] != 0 ||
+			es.ConfirmedRequests[es.Floor][elevconsts.CAB] != 0 ||
 			!es.requestsAbove()
-	case elevconsts.Stop:
+	case elevconsts.STOP:
 		return true
 	}
 	return true
@@ -88,21 +88,21 @@ func (es *ElevatorState) RequestsShouldStop() bool {
 
 func (es *ElevatorState) RequestsShouldClearImmediately(btnFloor int, btnType elevconsts.Button) bool {
 	switch es.clearRequestVariant {
-	case elevconsts.All:
+	case elevconsts.ALL:
 		return es.Floor == btnFloor
-	case elevconsts.InDirn:
+	case elevconsts.IN_DIRN:
 		return es.Floor == btnFloor &&
-			((es.Dirn == elevconsts.Up && btnType == elevconsts.HallUp) ||
-				(es.Dirn == elevconsts.Down && btnType == elevconsts.HallDown) ||
-				es.Dirn == elevconsts.Stop ||
-				btnType == elevconsts.Cab)
+			((es.Dirn == elevconsts.UP && btnType == elevconsts.HALL_UP) ||
+				(es.Dirn == elevconsts.DOWN && btnType == elevconsts.HALL_DOWN) ||
+				es.Dirn == elevconsts.STOP ||
+				btnType == elevconsts.CAB)
 	}
 	return false
 }
 
 func (es *ElevatorState) RequestsClearAtCurrentFloor() {
 	switch es.clearRequestVariant {
-	case elevconsts.All:
+	case elevconsts.ALL:
 		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
 			es.updateRequestChannel <- requestconfirmation.RequestMessage{
 				Floor:  es.Floor,
@@ -111,44 +111,44 @@ func (es *ElevatorState) RequestsClearAtCurrentFloor() {
 			}
 
 		}
-	case elevconsts.InDirn:
-		es.ConfirmedRequests[es.Floor][elevconsts.Cab] = 0
+	case elevconsts.IN_DIRN:
+		es.ConfirmedRequests[es.Floor][elevconsts.CAB] = 0
 		switch es.Dirn {
-		case elevconsts.Up:
-			if !es.requestsAbove() && es.ConfirmedRequests[es.Floor][elevconsts.HallUp] == 0 {
+		case elevconsts.UP:
+			if !es.requestsAbove() && es.ConfirmedRequests[es.Floor][elevconsts.HALL_UP] == 0 {
 				es.updateRequestChannel <- requestconfirmation.RequestMessage{
 					Floor:  es.Floor,
-					Button: elevconsts.HallDown,
+					Button: elevconsts.HALL_DOWN,
 					State:  requestconfirmation.REQ_Completed,
 				}
 			}
 			es.updateRequestChannel <- requestconfirmation.RequestMessage{
 				Floor:  es.Floor,
-				Button: elevconsts.HallUp,
+				Button: elevconsts.HALL_UP,
 				State:  requestconfirmation.REQ_Completed,
 			}
-		case elevconsts.Down:
-			if !es.requestsBelow() && es.ConfirmedRequests[es.Floor][elevconsts.HallDown] == 0 {
+		case elevconsts.DOWN:
+			if !es.requestsBelow() && es.ConfirmedRequests[es.Floor][elevconsts.HALL_DOWN] == 0 {
 				es.updateRequestChannel <- requestconfirmation.RequestMessage{
 					Floor:  es.Floor,
-					Button: elevconsts.HallUp,
+					Button: elevconsts.HALL_UP,
 					State:  requestconfirmation.REQ_Completed,
 				}
 			}
 			es.updateRequestChannel <- requestconfirmation.RequestMessage{
 				Floor:  es.Floor,
-				Button: elevconsts.HallDown,
+				Button: elevconsts.HALL_DOWN,
 				State:  requestconfirmation.REQ_Completed,
 			}
-		case elevconsts.Stop:
+		case elevconsts.STOP:
 			es.updateRequestChannel <- requestconfirmation.RequestMessage{
 				Floor:  es.Floor,
-				Button: elevconsts.HallUp,
+				Button: elevconsts.HALL_UP,
 				State:  requestconfirmation.REQ_Completed,
 			}
 			es.updateRequestChannel <- requestconfirmation.RequestMessage{
 				Floor:  es.Floor,
-				Button: elevconsts.HallDown,
+				Button: elevconsts.HALL_DOWN,
 				State:  requestconfirmation.REQ_Completed,
 			}
 		}
