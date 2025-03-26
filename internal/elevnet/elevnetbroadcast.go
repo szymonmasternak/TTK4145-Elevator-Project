@@ -5,9 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-
-	//"os"
-	//"syscall"
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
@@ -36,13 +33,11 @@ func MakeElevatorMessage(
 }
 
 type ElevNetBroadcast struct {
-	broadcasting       bool                       // internal variable
-	startStopCh        chan int                   // internal variable
-	conn               net.PacketConn             // changed type from *net.UDPConn
-	broadCastingPeriod time.Duration              // internal variable
-	metaData           *elevmetadata.ElevMetaData // internal variable
-	elevatorState      *elevstate.ElevatorState
-
+	broadcasting            bool                       // internal variable
+	startStopCh             chan int                   // internal variable
+	conn                    net.PacketConn             // changed type from *net.UDPConn
+	broadCastingPeriod      time.Duration              // internal variable
+	metaData                *elevmetadata.ElevMetaData // internal variable
 	stateOutChannel         <-chan elevstate.ElevatorState
 	outboundReqArrayChannel <-chan requestconfirmation.RequestArrayMessage
 }
@@ -52,7 +47,6 @@ func NewElevNetBroadcast(metaData *elevmetadata.ElevMetaData, elevatorState *ele
 		broadcasting:            false,
 		startStopCh:             make(chan int),
 		metaData:                metaData,
-		elevatorState:           elevatorState,
 		stateOutChannel:         stateOutChannel,
 		outboundReqArrayChannel: outboundReqCh,
 	}

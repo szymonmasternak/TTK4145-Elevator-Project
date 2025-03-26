@@ -31,18 +31,15 @@ type ElevatorListObject struct {
 type ElevNetListen struct {
 	// Channel for forwarding received broadcast messages.
 	ElevatorsFoundOnNetwork chan ElevatorMessage
-	stateInChannel          <-chan elevstate.ElevatorState
 	stateOutChannel         <-chan elevstate.ElevatorState
 	inboundReqArrayChannel  chan<- requestconfirmation.RequestArrayMessage
 	alivePeersChannel       chan<- []string
 
-	listening        bool                       // internal flag
-	startStopCh      chan int                   // for shutdown signaling
-	conn             net.PacketConn             // Changed to use net.PacketConn
-	metaData         *elevmetadata.ElevMetaData // metadata for this elevator
+	listening        bool           // internal flag
+	startStopCh      chan int       // for shutdown signaling
+	conn             net.PacketConn // Changed to use net.PacketConn
 	elevatorArray    []ElevatorListObject
 	elevatorArrayMtx sync.Mutex
-	ElevatorState    *elevstate.ElevatorState
 }
 
 func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState, inboundReqArrayCh chan<- requestconfirmation.RequestArrayMessage, alivePeersChannel chan<- []string) *ElevNetListen {
@@ -52,11 +49,9 @@ func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *el
 		inboundReqArrayChannel:  inboundReqArrayCh,
 		alivePeersChannel:       alivePeersChannel,
 
-		listening:     false,
-		startStopCh:   make(chan int),
-		conn:          nil,
-		metaData:      elevMetaData,
-		ElevatorState: elevatorState,
+		listening:   false,
+		startStopCh: make(chan int),
+		conn:        nil,
 	}
 }
 
