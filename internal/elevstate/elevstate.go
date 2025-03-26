@@ -122,6 +122,7 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 				case elevevent.RequestFloorEvent:
 					Log.Error().Msgf("RequestFloorEvent should not occur")
 				}
+				es.BroadcastState()
 				// Update state in the network
 				es.BroadcastState()
 			case <-BroadcastTicker.C:
