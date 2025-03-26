@@ -113,7 +113,7 @@ func TestElevatorStateInitialisation(t *testing.T) {
 func TestNewElevatorStateCommands(t *testing.T) {
 	_ = logger.GetLoggerConfigured(zerolog.Disabled)
 	eventChannel := make(chan elevevent.ElevatorEvent, 10)
-	commandChannel := make(chan elevcmd.ElevatorCommand, 1)
+	commandChannel := make(chan elevcmd.ElevatorCommand, 10)
 	stateInChannel := make(chan ElevatorState, 10)
 	stateOutChannel := make(chan ElevatorState, 10)
 	updateRequestChannel := make(chan requestconfirmation.RequestMessage, 10)
@@ -121,28 +121,61 @@ func TestNewElevatorStateCommands(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
-	defer wg.Wait()
-	defer cancel()
+	defer func() {
+		cancel()
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+			// All good
+		case <-time.After(5 * time.Second):
+			t.Fatal("Test timed out while waiting for WaitGroup")
+		}
+	}()
 
 	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel, updateRequestChannel)
 
 	floorStart := 3
 
-	go func() {
+	go func(ctx context.Context) {
 		for {
-			<-stateOutChannel
+			select {
+			case <-ctx.Done():
+				return
+			case <-stateOutChannel:
+				// Drain
+			}
 		}
-	}()
+	}(ctx)
+
+	go func(ctx context.Context) {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-commandChannel:
+				// Drain
+			}
+		}
+	}(ctx)
+
+	go func(ctx context.Context) {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-updateRequestChannel:
+				// Drain
+			}
+		}
+	}(ctx)
 
 	go func() {
 		time.Sleep(TEST_DELAY)
 		eventChannel <- elevevent.ElevatorEvent{Value: elevevent.RequestFloorEvent{Floor: floorStart}}
-	}()
-
-	go func() {
-		for {
-			<-commandChannel
-		}
 	}()
 
 	err := elevState.Start(ctx, wg)
@@ -158,6 +191,12 @@ func TestNewElevatorStateCommands(t *testing.T) {
 		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
 			eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floor, Button: elevconsts.Button(btn)}}
 			time.Sleep(TEST_DELAY)
+			updateRequestChannel <- requestconfirmation.RequestMessage{
+				Floor:  floor,
+				Button: elevconsts.Button(btn),
+				State:  requestconfirmation.REQ_Confirmed,
+			}
+			elevState.handleUpdateHallRequests(elevState.ConfirmedRequests)
 			if elevState.ConfirmedRequests[floor][btn] != 1 {
 				t.Errorf("Expected request for floor %v and button %v to be 1, got %v", floor, btn, elevState.ConfirmedRequests[floor][btn])
 			}
@@ -165,14 +204,12 @@ func TestNewElevatorStateCommands(t *testing.T) {
 	}
 
 	sensorEventFloor := 2
-	// Test floor sensor event.
 	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.FloorSensorEvent{Floor: sensorEventFloor}}
 	time.Sleep(TEST_DELAY)
 	if elevState.Floor != sensorEventFloor {
 		t.Errorf("Expected floor to be %v, got %v", sensorEventFloor, elevState.Floor)
 	}
 
-	// Test Stop Button event.
 	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.StopButtonEvent{Value: true}}
 	time.Sleep(TEST_DELAY)
 	if !elevState.stopButton {
@@ -182,7 +219,6 @@ func TestNewElevatorStateCommands(t *testing.T) {
 		t.Errorf("Expected direction to be Stop, got %v", elevState.Dirn)
 	}
 
-	// Test obstruction event.
 	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ObstructionEvent{Value: true}}
 	time.Sleep(TEST_DELAY)
 	if !elevState.obstructionSensor {

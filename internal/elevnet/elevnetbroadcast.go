@@ -5,14 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
-	"syscall"
+
+	//"os"
+	//"syscall"
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requestconfirmation"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/conn"
 )
 
 var Log = logger.GetLogger()
@@ -65,47 +67,13 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 	}
 	enb.broadCastingPeriod = broadcastPeriod
 
-	s, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP)
-	if err != nil {
-		fmt.Println("Error: Socket:", err)
-	}
-	syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
-	if err != nil {
-		fmt.Println("Error: SetSockOpt REUSEADDR:", err)
-	}
-	syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1)
-	if err != nil {
-		fmt.Println("Error: SetSockOpt BROADCAST:", err)
-	}
-	syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
-	if err != nil {
-		fmt.Println("Error: SetSockOpt REUSEPORT:", err)
-	}
-	syscall.Bind(s, &syscall.SockaddrInet4{Port: 9999})
-	if err != nil {
-		fmt.Println("Error: Bind:", err)
-	}
-
-	f := os.NewFile(uintptr(s), "")
-	c, err := net.FilePacketConn(f)
-	if err != nil {
-		fmt.Println("Error: FilePacketConn:", err)
-	}
-	f.Close()
-	enb.conn = c
+	conn := conn.DialBroadcastUDP(9999)
+	enb.conn = conn
 
 	udpAddr, err := net.ResolveUDPAddr("udp4", "255.255.255.255:9999")
 	if err != nil {
 		return fmt.Errorf("error resolving UDP Address: %v", err)
 	}
-
-	// Use DialUDP and store the connection as a net.PacketConn.
-	// conn, err := net.DialUDP("udp", nil, udpAddr)
-	// if err != nil {
-	// 	return fmt.Errorf("error creating UDP Socket: %v", err)
-	// }
-	// conn.SetWriteBuffer(BUFFER_LENGTH)
-	// enb.conn = conn
 
 	go func() {
 		timeTicker := time.NewTicker(enb.broadCastingPeriod)

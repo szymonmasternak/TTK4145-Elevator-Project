@@ -5,14 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requestconfirmation"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/conn"
 )
 
 const (
@@ -64,36 +63,7 @@ func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *el
 // Start starts the listener by binding to the UDP address and launching goroutines.
 func (enl *ElevNetListen) Start() error {
 
-	// Create UDP socket manually with SO_REUSEADDR
-	s, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP)
-	if err != nil {
-		fmt.Println("Error: Socket:", err)
-	}
-	syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
-	if err != nil {
-		fmt.Println("Error: SetSockOpt REUSEADDR:", err)
-	}
-	syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1)
-	if err != nil {
-		fmt.Println("Error: SetSockOpt BROADCAST:", err)
-	}
-	syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
-	if err != nil {
-		fmt.Println("Error: SetSockOpt REUSEPORT:", err)
-	}
-	syscall.Bind(s, &syscall.SockaddrInet4{Port: 9999})
-	if err != nil {
-		fmt.Println("Error: Bind:", err)
-	}
-
-	f := os.NewFile(uintptr(s), "")
-	c, err := net.FilePacketConn(f)
-	if err != nil {
-		fmt.Println("Error: FilePacketConn:", err)
-	}
-	f.Close()
-	// Use the returned PacketConn directly.
-	enl.conn = c
+	enl.conn = conn.DialBroadcastUDP(9999)
 
 	listenBuffer := make([]byte, BUFFER_LENGTH)
 	enl.listening = true
