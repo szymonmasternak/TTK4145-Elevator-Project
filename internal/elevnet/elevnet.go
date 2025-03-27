@@ -57,14 +57,28 @@ type AckPacket struct {
 // From here is all the network stuff
 
 const (
-	HEARTBEAT_INTERVAL      = 500 * time.Millisecond
-	SEND_STATE_INTERVAL     = 1 * time.Second
-	CHECK_NODES_INTERVAL    = 1 * time.Second
+	// ticker intervals
+	HEARTBEAT_INTERVAL   = 500 * time.Millisecond
+	SEND_STATE_INTERVAL  = 1 * time.Second
+	CHECK_NODES_INTERVAL = 1 * time.Second
+
+	// timeout values
 	NODE_TIMEOUT            = 3 * time.Second
 	ACKNOWLEDGEMENT_TIMEOUT = 200 * time.Millisecond
-	MAX_RETRIES             = 3
-	BROADCAST_RX_ADDRESS    = "224.0.0.1" //https://gist.github.com/fiorix/9664255
-	BROADCAST_TX_ADDRESS    = "255.255.255.255"
+
+	// max acknowledgement retries
+	MAX_RETRIES = 3
+
+	// channel capacity
+	CHANNEL_SIZE = 10
+
+	// buffers
+	BUFFER_SIZE_HEARTBEAT  = 1024
+	BUFFER_SIZE_DIRECT_MSG = 2048
+
+	// broadcast addresses
+	BROADCAST_RX_ADDRESS = "224.0.0.1" //https://gist.github.com/fiorix/9664255
+	BROADCAST_TX_ADDRESS = "255.255.255.255"
 )
 
 type Node struct {
@@ -94,12 +108,22 @@ type ElevatorNetwork struct {
 	initialised    bool
 }
 
+// generic decode helper
+func decodePacket[T any](data []byte, name string) (T, error) {
+	var out T
+	err := json.Unmarshal(data, &out)
+	if err != nil {
+		Logger.Error().Msgf("Failed to decode %s: %v", name, err)
+	}
+	return out, err
+}
+
 func NewElevatorNetwork(metaData *elevmetadata.ElevMetaData, state *elevstate.ElevatorState) *ElevatorNetwork {
 	return &ElevatorNetwork{
 		metaData:       metaData,
-		nodes:          make(map[string]*Node, 10), //TODO: Remove magic Number
+		nodes:          make(map[string]*Node, CHANNEL_SIZE),
 		localState:     state,
-		receiveChannel: make(chan AckPacket, 10), //TODO: Remove magic Number
+		receiveChannel: make(chan AckPacket, CHANNEL_SIZE),
 		initialised:    true,
 	}
 }
@@ -153,7 +177,7 @@ func (en *ElevatorNetwork) Start(ctx context.Context, wg *sync.WaitGroup) error 
 	//Heartbeat Receive Thread
 	go func() {
 		defer wg.Done()
-		buffer := make([]byte, 1024)
+		buffer := make([]byte, BUFFER_SIZE_HEARTBEAT)
 		for {
 			select {
 			case <-ctx.Done():
@@ -180,7 +204,7 @@ func (en *ElevatorNetwork) Start(ctx context.Context, wg *sync.WaitGroup) error 
 	//Receive Direct Messages Thread
 	go func() {
 		defer wg.Done()
-		buffer := make([]byte, 2048)
+		buffer := make([]byte, BUFFER_SIZE_DIRECT_MSG)
 		for {
 			select {
 			case <-ctx.Done():
@@ -246,54 +270,45 @@ func (en *ElevatorNetwork) sendElevatorHeartbeat() {
 		Logger.Error().Msgf("Failed to broadcast heartbeat: %v", err)
 	}
 }
-
 func (en *ElevatorNetwork) handleDirectMessage(data []byte, address *net.UDPAddr) {
-	//All packets with have NetworkPacket type at the start, parse and identify what packet
 	var packet NetworkPacket
 	if err := json.Unmarshal(data, &packet); err != nil {
 		Logger.Error().Msgf("Failed to unmarshal packet: %v", err)
 		return
 	}
 
-	//Check if own packet
 	if packet.MetaData.Identifier == en.metaData.Identifier {
 		return
 	}
 
 	packetHash := en.calculateHash(data)
 
-	// Process packet
 	switch packet.PacketType {
 	case PACKET_TYPE_STATE:
-		var statePacket StatePacket
-		if err := json.Unmarshal(data, &statePacket); err != nil {
-			Logger.Error().Msgf("Failed to unmarshal state packet: %v", err)
+		statePacket, err := decodePacket[StatePacket](data, "StatePacket")
+		if err != nil {
 			return
 		}
 		en.sendAcknowledgement(packetHash, packet.MetaData.Identifier, address)
 		en.handleStatePacket(statePacket)
 
 	case PACKET_TYPE_BUTTON:
-		var buttonPacket ButtonPacket
-		if err := json.Unmarshal(data, &buttonPacket); err != nil {
-			Logger.Error().Msgf("Failed to unmarshal button packet: %v", err)
+		buttonPacket, err := decodePacket[ButtonPacket](data, "ButtonPacket")
+		if err != nil {
 			return
 		}
 		en.sendAcknowledgement(packetHash, packet.MetaData.Identifier, address)
 		en.handleButtonPacket(buttonPacket)
 
 	case PACKET_TYPE_ACK:
-		var ackPacket AckPacket
-		if err := json.Unmarshal(data, &ackPacket); err != nil {
-			Logger.Error().Msgf("Failed to unmarshal ACK packet: %v", err)
+		ackPacket, err := decodePacket[AckPacket](data, "AckPacket")
+		if err != nil {
 			return
 		}
-
 		select {
 		case en.receiveChannel <- ackPacket:
-			//Logger.Debug().Msgf("Received acknowledge hash: %s", ackPacket.MessageHash)
 		default:
-			Logger.Error().Msg("FIX THIS SHOULD NEVER HAPPEN")
+			Logger.Error().Msg("Receive channel full: acknowledgment dropped. Increase buffer?")
 		}
 	default:
 		Logger.Warn().Msgf("Received unknown packet type: %v", packet.PacketType)
@@ -329,8 +344,8 @@ func (en *ElevatorNetwork) handleElevatorHeartbeat(heartbeat HeartBeatPacket) {
 			MetaData: heartbeat.MetaData,
 			State: elevstate.ElevatorState{
 				Floor:     -1,
-				Dirn:      elevconsts.Stop,
-				Behaviour: elevconsts.Idle,
+				Dirn:      elevconsts.STOP,
+				Behaviour: elevconsts.IDLE,
 			},
 			LastHeartbeatTime: time.Now(),
 			LastStateUpdate:   time.Now(),
@@ -362,20 +377,25 @@ func (en *ElevatorNetwork) sendAcknowledgement(messageHash string, nodeID string
 }
 
 func (en *ElevatorNetwork) sendWithRetry(data []byte, node *Node) bool {
+	// Extract all needed fields under lock
 	node.Mutex.Lock()
-	if !node.Alive {
-		node.Mutex.Unlock()
+	alive := node.Alive
+	nodeID := node.MetaData.Identifier
+	ip := node.MetaData.IpAddress
+	port := node.MetaData.PortNumber
+	node.Mutex.Unlock()
+
+	if !alive {
 		return false
 	}
-	nodeID := node.MetaData.Identifier
-	nodeAddressPort := fmt.Sprintf("%s:%d", node.MetaData.IpAddress, node.MetaData.PortNumber)
-	nodeAddr, err := net.ResolveUDPAddr("udp", nodeAddressPort)
+
+	nodeAddrStr := fmt.Sprintf("%s:%d", ip, port)
+	nodeAddr, err := net.ResolveUDPAddr("udp", nodeAddrStr)
 	if err != nil {
 		Logger.Error().Msgf("Failed to resolve node address: %v", err)
-		node.Mutex.Unlock()
 		return false
 	}
-	node.Mutex.Unlock()
+
 	messageHash := en.calculateHash(data)
 
 	for i := 0; i < MAX_RETRIES; i++ {
@@ -394,12 +414,11 @@ func (en *ElevatorNetwork) sendWithRetry(data []byte, node *Node) bool {
 			Logger.Debug().Msgf("Retry sending to %s attempt %d", nodeID, i)
 		}
 	}
+
 	Logger.Warn().Msgf("Failed to get acknowledgment from %s after %d retries", nodeID, MAX_RETRIES)
 
 	en.nodesMutex.Lock()
-	node, ok := en.nodes[nodeID]
-	if ok {
-		//If node is set to alive, then mark it as dead
+	if node, ok := en.nodes[nodeID]; ok {
 		node.Mutex.Lock()
 		node.Alive = false
 		node.Mutex.Unlock()
@@ -418,19 +437,20 @@ func (en *ElevatorNetwork) sendState() {
 	stateLocal := *en.localState
 	en.statePointer.Unlock()
 
-	//Send state to all alive nodes
+	// Copy alive nodes outside locks
 	en.nodesMutex.Lock()
 	nodes := make([]*Node, 0, len(en.nodes))
 	for _, node := range en.nodes {
 		node.Mutex.Lock()
-		if node.Alive {
+		alive := node.Alive
+		node.Mutex.Unlock()
+		if alive {
 			nodes = append(nodes, node)
 		}
-		node.Mutex.Unlock()
 	}
 	en.nodesMutex.Unlock()
 
-	//Send To Each Node
+	// Broadcast state
 	for _, node := range nodes {
 		stateUpdateMsg := StatePacket{
 			NetworkPacket: NetworkPacket{
@@ -476,17 +496,19 @@ func (en *ElevatorNetwork) handleStatePacket(packet StatePacket) {
 
 func (en *ElevatorNetwork) checkNodes() {
 	en.nodesMutex.Lock()
-	defer en.nodesMutex.Unlock()
-
+	nodeCopies := make(map[string]*Node)
 	for id, node := range en.nodes {
-		node.Mutex.Lock()
-		timeSinceLastNodeHeartBeat := time.Since(node.LastHeartbeatTime)
+		nodeCopies[id] = node
+	}
+	en.nodesMutex.Unlock()
 
-		if timeSinceLastNodeHeartBeat > NODE_TIMEOUT {
-			if node.Alive {
-				Logger.Warn().Msgf("Deleting Node %s after not responding for %v", id, timeSinceLastNodeHeartBeat)
-				node.Alive = false
-			}
+	now := time.Now()
+	for id, node := range nodeCopies {
+		node.Mutex.Lock()
+		timeSince := now.Sub(node.LastHeartbeatTime)
+		if timeSince > NODE_TIMEOUT && node.Alive {
+			Logger.Warn().Msgf("Marking Node %s as dead after %v", id, timeSince)
+			node.Alive = false
 		}
 		node.Mutex.Unlock()
 	}
@@ -498,17 +520,19 @@ func (en *ElevatorNetwork) GetNodeStates() map[string]*Node {
 
 func (en *ElevatorNetwork) GetNodesConnected() int {
 	en.nodesMutex.Lock()
-	defer en.nodesMutex.Unlock()
-
-	counter := 0
-
+	nodes := make([]*Node, 0, len(en.nodes))
 	for _, node := range en.nodes {
+		nodes = append(nodes, node)
+	}
+	en.nodesMutex.Unlock()
+
+	count := 0
+	for _, node := range nodes {
 		node.Mutex.Lock()
 		if node.Alive {
-			counter++
+			count++
 		}
 		node.Mutex.Unlock()
 	}
-
-	return counter
+	return count
 }
