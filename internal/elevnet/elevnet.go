@@ -492,9 +492,37 @@ func (en *ElevatorNetwork) checkNodes() {
 	}
 }
 
-func (en *ElevatorNetwork) GetNodeStates() map[string]*Node {
-	return en.nodes
+func (en *ElevatorNetwork) GetNodeMap() map[string]*Node {
+	en.nodesMutex.Lock()
+	defer en.nodesMutex.Unlock()
+
+	copy := make(map[string]*Node)
+	for k, v := range en.nodes {
+		copy[k] = v
+	}
+	return copy
 }
+
+func (en *ElevatorNetwork) GetElevatorStateMap() map[string]elevstate.ElevatorState {
+	states := make(map[string]elevstate.ElevatorState)
+
+	for id, node := range en.GetNodeMap() {
+		states[id] = node.State
+	}
+
+	return states
+}
+
+// func (en *ElevatorNetwork) BroadcastStateMap() {
+// 	if en.stateMapChannel == nil {
+// 		return
+// 	}
+// 	select {
+// 	case en.stateMapChannel <- en.GetElevatorStateMap():
+// 	default:
+// 		Log.Warn().Msg("stateMapChannel full, skipping broadcast")
+// 	}
+// }
 
 func (en *ElevatorNetwork) GetNodesConnected() int {
 	en.nodesMutex.Lock()
