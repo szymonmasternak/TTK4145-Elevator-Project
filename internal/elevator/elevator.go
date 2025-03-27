@@ -3,6 +3,7 @@ package elevator
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
@@ -41,6 +42,7 @@ type Elevator struct {
 
 	stateOutChannel         chan elevstate.ElevatorState
 	requestUpdateChannel    chan requestconfirmation.RequestMessage
+	localRequestsArrChannel chan requestconfirmation.RequestArray
 	inboundReqArrayChannel  chan requestconfirmation.RequestArrayMessage
 	outboundReqArrayChannel chan requestconfirmation.RequestArrayMessage
 	alivePeersChannel       chan []string
@@ -65,13 +67,13 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 		PortNumber:      portNumber,
 		Identifier:      identifier,
 	}
-	Logger.Debug().Msgf("Elevator Metadata: %v", elevatorMetadata)
 
 	eventChannel := make(chan elevevent.ElevatorEvent, EVENT_CHANNEL_SIZE)
 	commandChannel := make(chan elevcmd.ElevatorCommand, COMMAND_CHANNEL_SIZE)
 	stateInChannel := make(chan elevstate.ElevatorState, 10) //TODO: remove from everywhere
 	stateOutChannel := make(chan elevstate.ElevatorState, 10)
 	requestUpdatechannel := make(chan requestconfirmation.RequestMessage, 10)
+	localRequestsArrChannel := make(chan requestconfirmation.RequestArray, 10)
 	inboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage, 10)
 	outboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage, 10)
 	alivePeersChannel := make(chan []string, 10)
@@ -83,8 +85,8 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 
 	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateInChannel, stateOutChannel, requestUpdatechannel)
 	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateOutChannel, outboundReqArrayChannel, inboundReqArrayChannel, alivePeersChannel)
-	elevAssigner := elevhallrequestassigner.NewHallRequestAssigner(elevatorMetadata.Identifier, elevNetwork.Listen, eventChannel, stateOutChannel)
-	reqHandler := requestconfirmation.NewRequestHandler(elevatorMetadata.Identifier, requestUpdatechannel, inboundReqArrayChannel, outboundReqArrayChannel, alivePeersChannel)
+	elevAssigner := elevhallrequestassigner.NewHallRequestAssigner(elevatorMetadata.Identifier, elevNetwork.Listen, eventChannel, stateOutChannel, localRequestsArrChannel)
+	reqHandler := requestconfirmation.NewRequestHandler(elevatorMetadata.Identifier, requestUpdatechannel, inboundReqArrayChannel, outboundReqArrayChannel, alivePeersChannel, localRequestsArrChannel)
 	return &Elevator{
 		MetaData:                elevatorMetadata,
 		Network:                 elevNetwork,
@@ -136,23 +138,28 @@ func (e *Elevator) Start() {
 	e.HallRequestAssigner.Start(ctxAssigner, wgAssigner)
 	e.cancelArray = append(e.cancelArray, cancelAssigner)
 	e.RequestHandler.Start()
+	e.Network.Broadcast.Start(time.Millisecond * 100)
+	e.Network.Listen.Start()
 
-	go func() {
-		for {
-			select {
-			case requestArray := <-e.outboundReqArrayChannel:
-				for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
-					for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
-						if requestArray.RequestArray[floor][btn].State == requestconfirmation.REQ_Confirmed {
-							e.State.ConfirmedRequests[floor][btn] = 1
-						} else {
-							e.State.ConfirmedRequests[floor][btn] = 0
-						}
-					}
-				}
-			}
-		}
-	}()
+	// go func() {
+	// 	for {
+	// 		select {
+	// 		case requestArray := <-e.outboundReqArrayChannel:
+	// 			if requestArray.Identifier == e.MetaData.Identifier {
+	// 				for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
+	// 					for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
+	// 						if requestArray.RequestArray[floor][btn].State == requestconfirmation.REQ_Confirmed {
+	// 							e.State.ConfirmedRequests[floor][btn] = 1
+	// 						} else {
+	// 							e.State.ConfirmedRequests[floor][btn] = 0
+	// 						}
+	// 					}
+	// 				}
+	// 				Logger.Debug().Msgf("Confirmed Requests: %v", e.State.ConfirmedRequests)
+	// 			}
+	// 		}
+	// 	}
+	// }()
 }
 
 func (e *Elevator) Stop() {

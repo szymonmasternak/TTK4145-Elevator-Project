@@ -112,7 +112,11 @@ func (es *ElevatorState) RequestsClearAtCurrentFloor() {
 
 		}
 	case elevconsts.InDirn:
-		es.ConfirmedRequests[es.Floor][elevconsts.Cab] = 0
+		es.updateRequestChannel <- requestconfirmation.RequestMessage{
+			Floor:  es.Floor,
+			Button: elevconsts.Cab,
+			State:  requestconfirmation.REQ_Completed,
+		}
 		switch es.Dirn {
 		case elevconsts.Up:
 			if !es.requestsAbove() && es.ConfirmedRequests[es.Floor][elevconsts.HallUp] == 0 {

@@ -140,7 +140,7 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 				}
 				jsonData, err := json.Marshal(msg)
 				if err != nil {
-					Log.Error().Msgf("Error marshalling JSON: %v", err)
+					Log.Error().Msgf("BCAST: Error marshalling JSON: %v", err)
 					continue
 				}
 				// Use WriteTo to send to the remote address.
@@ -149,7 +149,7 @@ func (enb *ElevNetBroadcast) Start(broadcastPeriod time.Duration) error {
 					Log.Error().Msgf("Error writing to UDP Socket: %v", err)
 					continue
 				}
-				Log.Debug().Msgf("Sent Packet: %v", string(jsonData))
+				//Log.Debug().Msgf("Sent Packet: %v", string(jsonData))
 
 			case val := <-enb.startStopCh:
 				if val == 0 {

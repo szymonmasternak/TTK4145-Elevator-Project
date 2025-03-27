@@ -34,7 +34,7 @@ func TestStartBroadcastingListening(t *testing.T) {
 	inboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage)
 	outboundReqArrayChannel := make(chan requestconfirmation.RequestArrayMessage)
 
-	broadcastingPeriod := 10 * time.Millisecond
+	broadcastingPeriod := 100 * time.Millisecond
 	listeningTimeout := broadcastingPeriod * 2
 
 	network := NewElevatorNetwork(&metaData, &state, stateOutChannel, outboundReqArrayChannel, inboundReqArrayChannel)

@@ -11,9 +11,9 @@ var Log = logger.GetLogger()
 
 type ElevMetaData struct {
 	SoftwareVersion string `json:"software_version"`
-	IpAddress       string `json:"ip_address"`
-	PortNumber      uint16 `json:"port_number"`
-	Identifier      string `json:"identifier"`
+	IpAddress       string `json:"ip_addr"`
+	PortNumber      uint16 `json:"port_nb"`
+	Identifier      string `json:"id"`
 }
 
 func (elevMetaData *ElevMetaData) String() string {

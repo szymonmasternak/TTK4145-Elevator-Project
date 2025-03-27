@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevnet"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requestconfirmation"
 )
 
 var Log = logger.GetLogger()
@@ -26,6 +26,7 @@ type HallRequestAssigner struct {
 
 	eventChannel              chan<- elevevent.ElevatorEvent
 	localStateRecieverChannel <-chan elevstate.ElevatorState
+	localRequestsArrChannel   <-chan requestconfirmation.RequestArray
 }
 
 type HallRequestAssignerElevatorState struct {
@@ -40,49 +41,66 @@ type HallRequestAssignerInput struct {
 	States       map[string]HallRequestAssignerElevatorState `json:"states"`
 }
 
-func NewHallRequestAssigner(localID string, localNetworkListener *elevnet.ElevNetListen, eventChannel chan<- elevevent.ElevatorEvent, localStateRecieverChannel <-chan elevstate.ElevatorState) *HallRequestAssigner {
+func NewHallRequestAssigner(localID string, localNetworkListener *elevnet.ElevNetListen, eventChannel chan<- elevevent.ElevatorEvent, localStateRecieverChannel <-chan elevstate.ElevatorState, localReqsArrCh <-chan requestconfirmation.RequestArray) *HallRequestAssigner {
 	return &HallRequestAssigner{
 		localID:                   localID,
 		localNetworkListener:      localNetworkListener,
 		executableVersion:         getExecutableVersion(),
 		eventChannel:              eventChannel,
 		localStateRecieverChannel: localStateRecieverChannel,
+		localRequestsArrChannel:   localReqsArrCh,
 	}
 }
 
 func (assigner *HallRequestAssigner) Start(ctx context.Context, waitGroup *sync.WaitGroup) {
-	Log.Debug().Msgf("HallRequestAssigner started")
 	assignerTicker := time.NewTicker(100 * time.Millisecond)
+
+	var latestState elevstate.ElevatorState
+	var latestReqArray requestconfirmation.RequestArray
 
 	waitGroup.Add(1)
 	go func() {
 		defer waitGroup.Done()
 		defer assignerTicker.Stop()
-		Log.Debug().Msgf("HallRequestAssigner goroutine started")
 		for {
 			select {
 			case <-ctx.Done():
 				Log.Warn().Msgf("Assigner Start has been signaled to stop")
 				return
 			case <-assignerTicker.C:
-				localState := <-assigner.localStateRecieverChannel
-				Log.Debug().Msgf("HallRequestAssigner got local state")
+				latestState = drainState(assigner.localStateRecieverChannel, latestState)
+				latestReqArray = drainRequests(assigner.localRequestsArrChannel, latestReqArray)
+				// Now process using latestState and latestReqArray
+				Log.Debug().Msgf("HRA: latestReqArray: %v", latestReqArray)
 				stateMap := assigner.localNetworkListener.GetElevatorStateMap()
-				input := getHallRequestAssignerInput(localState, stateMap)
-				if len(input.States) != 0 {
+				updatedLocalRequests := [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int{}
+				for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
+					for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
+						if latestReqArray[floor][btn].State == requestconfirmation.REQ_Confirmed {
+							updatedLocalRequests[floor][btn] = 1
+						}
+					}
+				}
+				Log.Debug().Msgf("New local confirmedRequests: %v", updatedLocalRequests)
+				latestState.ConfirmedRequests = updatedLocalRequests
+				stateMap[assigner.localID] = latestState
+				if len(stateMap) > 1 {
+					input := getHallRequestAssignerInput(latestState, stateMap)
 					optimalHallRequests := getOptimalHallRequests(assigner.executableVersion, input)
+					Log.Debug().Msgf("HRA: optimal local hall requests: %v", optimalHallRequests)
 					if optimalHallRequests == nil {
 						Log.Warn().Msgf("HallRequestAssigner got nil optimal hall requests")
 						continue
 					}
-					Log.Debug().Msgf("HallRequestAssigner got optimal hall requests")
-					optimalLocalRequests := getOptimalLocalRequests(optimalHallRequests, localState.ConfirmedRequests, assigner.localID)
-					assigner.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.UpdateHallRequestsEvent{Requests: optimalLocalRequests}}
+					optimalLocalRequests := getOptimalLocalRequests(optimalHallRequests, latestState.ConfirmedRequests, assigner.localID)
+					assigner.eventChannel <- elevevent.ElevatorEvent{
+						Value: elevevent.UpdateHallRequestsEvent{Requests: optimalLocalRequests},
+					}
+				} else {
+					assigner.eventChannel <- elevevent.ElevatorEvent{
+						Value: elevevent.UpdateHallRequestsEvent{Requests: updatedLocalRequests},
+					}
 				}
-
-				// if localState.Requests != optimalLocalRequests {
-				// 	assigner.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.UpdateHallRequestsEvent{Requests: optimalLocalRequests}}
-				// }
 			}
 		}
 	}()
@@ -123,26 +141,27 @@ func getHallRequestAssignerInput(localElevatorState elevstate.ElevatorState, ele
 }
 
 func getExecutableVersion() string {
-	executableVersion := ""
+	var executableName string
 	switch runtime.GOOS {
 	case "linux":
-		executableVersion = "hall_request_assigner"
+		executableName = "hall_request_assigner"
 	case "windows":
-		executableVersion = "hall_request_assigner.exe"
+		executableName = "hall_request_assigner.exe"
 	case "darwin":
-		//executableVersion = "macOS_hall_request_assigner"
-		executableVersion = "macOS_hall_request_assigner"
-		// Adjust this if the file is elsewhere
-		path := filepath.Join("internal", "elevhallrequestassigner", executableVersion)
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			panic("Unable to determine absolute path: " + err.Error())
-		}
-		return absPath
+		executableName = "macOS_hall_request_assigner"
 	default:
 		panic("OS not supported")
 	}
-	return executableVersion
+	return executableName
+
+	// // If the executables are all in the same "hall_request_assigner" folder:
+	// path := filepath.Join("libs", "hall_request_assigner", executableName)
+	// absPath, err := filepath.Abs(path)
+	// if err != nil {
+	// 	panic("Unable to determine absolute path: " + err.Error())
+	// }
+
+	// return absPath
 }
 
 func getOptimalHallRequests(executableVersion string, input HallRequestAssignerInput) map[string][][2]bool {
@@ -152,7 +171,7 @@ func getOptimalHallRequests(executableVersion string, input HallRequestAssignerI
 		return nil
 	}
 
-	ret, err := exec.Command(executableVersion, "-i", string(jsonBytes)).CombinedOutput()
+	ret, err := exec.Command("../libs/hall_request_assigner/"+executableVersion, "-i", string(jsonBytes)).CombinedOutput()
 	if err != nil {
 		fmt.Println("exec.Command error: ", err)
 		fmt.Println(string(ret))
@@ -183,4 +202,28 @@ func toInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+func drainState(ch <-chan elevstate.ElevatorState, current elevstate.ElevatorState) elevstate.ElevatorState {
+	latest := current
+	for {
+		select {
+		case s := <-ch:
+			latest = s
+		default:
+			return latest
+		}
+	}
+}
+
+func drainRequests(ch <-chan requestconfirmation.RequestArray, current requestconfirmation.RequestArray) requestconfirmation.RequestArray {
+	latest := current
+	for {
+		select {
+		case r := <-ch:
+			latest = r
+		default:
+			return latest
+		}
+	}
 }

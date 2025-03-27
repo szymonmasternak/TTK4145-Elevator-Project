@@ -13,7 +13,7 @@ func main() {
 	identifier, portNumber, clearAllRequestsAtFloorArrival, driverIPAddress := elevutils.ProcessCmdArgs()
 
 	// Starting Programme
-	Logger.Info().Msg("Starting Elevator Programme")
+	Logger.Info().Msg("🛗 Starting Elevator Programme")
 
 	elev := elevator.NewElevator(identifier, portNumber, driverIPAddress, clearAllRequestsAtFloorArrival)
 	elev.Start()

@@ -98,7 +98,7 @@ func (eio *ElevatorIO) Start(ctx context.Context, waitGroup *sync.WaitGroup) {
 				Log.Warn().Msgf("ElevatorIO Receive Command Channel Go routine has been signaled to stop")
 				return
 			case command := <-eio.commandChannel:
-				Log.Debug().Msgf("Received command %v", command.CommandType())
+				//Log.Debug().Msgf("Received command %v", command.CommandType())
 				switch cmd := command.Value.(type) {
 				case elevcmd.MotorDirCommand:
 					eio.driver.SetMotorDirection(MotorDirection(cmd.Dir))

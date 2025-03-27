@@ -1,6 +1,8 @@
 package requestconfirmation
 
 import (
+	"time"
+
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 )
@@ -20,8 +22,8 @@ const (
 
 // Request holds the state and list of nodes that have confirmed the request.
 type Request struct {
-	State          RequestState
-	ConsensusPeers []string
+	State          RequestState `json:"state"`
+	ConsensusPeers []string     `json:"consensus"`
 }
 
 // RequestArray is a two-dimensional array of requests.
@@ -39,8 +41,8 @@ type RequestMessage struct {
 
 // RequestArrayMessage is used to exchange the entire RequestArray between nodes.
 type RequestArrayMessage struct {
-	Identifier   string
-	RequestArray RequestArray
+	Identifier   string       `json:"id"`
+	RequestArray RequestArray `json:"reqArray"`
 }
 
 // RequestHandler manages local state and communications with other nodes.
@@ -52,26 +54,47 @@ type RequestHandler struct {
 
 	requestUpdateChannel <-chan RequestMessage      // Local messages (e.g., button presses)
 	inboundArrayChannel  <-chan RequestArrayMessage // Inbound messages from remote nodes
-	outboundArrayChannel chan<- RequestArrayMessage // Outbound messages for broadcasting local state
+	outboundArrayChannel chan<- RequestArrayMessage // Outbound messages for broadcasting state
 	alivePeersChannel    <-chan []string
+
+	// NEW: localRequestAssignerChannel sends the local RequestArray updates to a request assigner.
+	localRequestAssignerChannel chan<- RequestArray
+
+	// lastSent tracks the last broadcasted RequestArray for each peer.
+	lastSent RequestConfirmationMap
 }
 
 // NewRequestHandler creates a new RequestHandler instance.
+// Note the new localRequestAssignerChannel parameter.
 func NewRequestHandler(
 	localID string,
 	requestMsgChannel <-chan RequestMessage,
 	inboundArrayChannel <-chan RequestArrayMessage,
 	outboundArrayChannel chan<- RequestArrayMessage,
 	alivePeersChannel <-chan []string,
+	localRequestAssignerChannel chan<- RequestArray,
 ) *RequestHandler {
+	reqMap := NewRequestConfirmationMap(localID)
+	lastSent := make(RequestConfirmationMap)
+	// Initialize lastSent for the local node.
+	lastSent[localID] = reqMap[localID]
+
+	// Broadcast initial state for local node.
+	outboundArrayChannel <- RequestArrayMessage{
+		Identifier:   localID,
+		RequestArray: reqMap[localID],
+	}
+
 	return &RequestHandler{
-		localID:              localID,
-		requestMap:           NewRequestConfirmationMap(localID),
-		alivePeers:           []string{localID},
-		requestUpdateChannel: requestMsgChannel,
-		inboundArrayChannel:  inboundArrayChannel,
-		outboundArrayChannel: outboundArrayChannel,
-		alivePeersChannel:    alivePeersChannel,
+		localID:                     localID,
+		requestMap:                  reqMap,
+		alivePeers:                  []string{localID},
+		requestUpdateChannel:        requestMsgChannel,
+		inboundArrayChannel:         inboundArrayChannel,
+		outboundArrayChannel:        outboundArrayChannel,
+		alivePeersChannel:           alivePeersChannel,
+		localRequestAssignerChannel: localRequestAssignerChannel, // NEW
+		lastSent:                    lastSent,
 	}
 }
 
@@ -88,59 +111,103 @@ func NewRequestConfirmationMap(localID string) RequestConfirmationMap {
 	}
 	requestMap := make(RequestConfirmationMap)
 	requestMap[localID] = reqArr
+	Log.Debug().Msgf("Initialized RequestConfirmationMap for %s: %v", localID, requestMap)
 	return requestMap
 }
 
-// Start listens for inbound RequestArrayMessages and local RequestMessages,
-// updates the internal state accordingly, and broadcasts changes via the outbound channel.
+// requestArrayEqual compares two RequestArrays.
+func requestArrayEqual(a, b RequestArray) bool {
+	for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
+		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
+			if a[floor][btn].State != b[floor][btn].State || !stringSliceEqual(a[floor][btn].ConsensusPeers, b[floor][btn].ConsensusPeers) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// stringSliceEqual compares two string slices.
+func stringSliceEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// broadcastIfUpdated sends an updated RequestArray for the given peer if it differs from what was last sent.
+func (handler *RequestHandler) broadcastIfUpdated(peerID string) {
+	current := handler.requestMap[peerID]
+	last, exists := handler.lastSent[peerID]
+	if !exists || !requestArrayEqual(current, last) {
+		handler.outboundArrayChannel <- RequestArrayMessage{
+			Identifier:   peerID,
+			RequestArray: current,
+		}
+		if peerID == handler.localID {
+			handler.localRequestAssignerChannel <- current
+			//Log.Debug().Msgf("Broadcasted local requestStates: %v", current)
+		}
+		// Update lastSent.
+		handler.lastSent[peerID] = current
+	}
+}
+
+// Start listens for inbound RequestArrayMessages, local RequestMessages,
+// and periodically broadcasts updates. It now sends out updated local state
+// to both remote nodes and the request assigner.
 func (handler *RequestHandler) Start() {
 	Log.Debug().Msgf("RequestConfirmer started")
-	//confirmationTicker := time.NewTicker(100 * time.Millisecond)
+	// Broadcast initial state for local node.
+	handler.broadcastIfUpdated(handler.localID)
+
+	confirmationTicker := time.NewTicker(100 * time.Millisecond)
 	go func() {
 		for {
 			select {
 			// Process inbound messages from remote nodes.
 			case incomingMsg := <-handler.inboundArrayChannel:
-				Log.Debug().Msgf("Inbound RequestArrayMessage received from %s", incomingMsg.Identifier)
-				//handler.alivePeers = MergeStringArrays(handler.alivePeers, []string{incomingMsg.Identifier})
-				handler.updateLocalRequestMap(incomingMsg.Identifier, incomingMsg.RequestArray)
-				Log.Debug().Msgf("Local map for %s: %v", handler.localID, handler.requestMap[handler.localID])
-				// Broadcast updated local state.
-				handler.outboundArrayChannel <- RequestArrayMessage{
-					Identifier:   handler.localID,
-					RequestArray: handler.requestMap[handler.localID],
+				if incomingMsg.Identifier == "" {
+					Log.Error().Msgf("Empty identifier received")
+					break
 				}
+				Log.Debug().Msgf("Inbound RequestArrayMessage received for %s", incomingMsg.Identifier)
+				handler.updateLocalRequestMap(incomingMsg.Identifier, incomingMsg.RequestArray)
+				Log.Debug().Msgf("Local map updated: %v", handler.requestMap)
+				handler.broadcastIfUpdated(incomingMsg.Identifier)
 
 			// Process local request messages.
 			case reqMsg := <-handler.requestUpdateChannel:
 				Log.Debug().Msgf("Local RequestMessage received")
 				tempArr := handler.requestMap[handler.localID]
+				// Update the local RequestArray based on the incoming RequestMessage.
 				if tempArr[reqMsg.Floor][reqMsg.Button].State <= REQ_None && reqMsg.State == REQ_Unconfirmed {
 					tempArr[reqMsg.Floor][reqMsg.Button].State = REQ_Unconfirmed
+					tempArr[reqMsg.Floor][reqMsg.Button].ConsensusPeers = []string{handler.localID}
 				} else if tempArr[reqMsg.Floor][reqMsg.Button].State == REQ_Confirmed && reqMsg.State == REQ_Completed {
 					tempArr[reqMsg.Floor][reqMsg.Button].State = REQ_Completed
+					tempArr[reqMsg.Floor][reqMsg.Button].ConsensusPeers = []string{handler.localID}
 				}
 				handler.requestMap[handler.localID] = tempArr
 				if len(handler.alivePeers) == 1 {
 					handler.updateLocalRequestMap(handler.localID, handler.requestMap[handler.localID])
 				}
-				handler.outboundArrayChannel <- RequestArrayMessage{
-					Identifier:   handler.localID,
-					RequestArray: handler.requestMap[handler.localID],
-				}
-				Log.Debug().Msgf("Updated local map: %v", handler.requestMap[handler.localID])
+				// Broadcast updated state to remote nodes...
+				handler.broadcastIfUpdated(handler.localID)
+				// And also send the updated local RequestArray to the request assigner.
+				Log.Debug().Msgf("Updated local requests: %v", handler.requestMap[handler.localID])
 
-			// Periodic update using the ticker.
-			// case <-confirmationTicker.C:
-			// 	// For example, only update if only the local node is active.
-			// 	if len(handler.alivePeers) == 1 {
-			// 		handler.updateLocalRequestMap(handler.localID, handler.requestMap[handler.localID])
-			// 		Log.Debug().Msgf("Local map updated: %v", handler.requestMap[handler.localID])
-			// 		handler.outboundArrayChannel <- RequestArrayMessage{
-			// 			Identifier:   handler.localID,
-			// 			RequestArray: handler.requestMap[handler.localID],
-			// 		}
-			// 	}
+			// Periodic check to broadcast updates if necessary.
+			case <-confirmationTicker.C:
+				for peerID := range handler.requestMap {
+					handler.broadcastIfUpdated(peerID)
+				}
+
 			case newPeers := <-handler.alivePeersChannel:
 				handler.alivePeers = newPeers
 				Log.Debug().Msgf("Alive peers updated: %v", newPeers)
@@ -151,9 +218,6 @@ func (handler *RequestHandler) Start() {
 
 // mergeRequests merges two Request instances using confirmation logic.
 func (handler *RequestHandler) mergeRequests(localReq, remoteReq Request) Request {
-	// Merge the consensus lists.
-	localReq.ConsensusPeers = MergeStringArrays(localReq.ConsensusPeers, remoteReq.ConsensusPeers)
-
 	// Adjust state based on priority.
 	if localReq.State == REQ_None && remoteReq.State == REQ_Completed {
 		// Ignore remote state.
@@ -163,7 +227,7 @@ func (handler *RequestHandler) mergeRequests(localReq, remoteReq Request) Reques
 		localReq.State = remoteReq.State
 	}
 
-	// If request is unconfirmed or completed, try to confirm it.
+	// If the request is unconfirmed or completed, try to confirm it.
 	if localReq.State == REQ_Completed || localReq.State == REQ_Unconfirmed {
 		localReq.ConsensusPeers = MergeStringArrays(localReq.ConsensusPeers, remoteReq.ConsensusPeers)
 		localReq = confirmRequest(localReq, handler.localID, handler.alivePeers)

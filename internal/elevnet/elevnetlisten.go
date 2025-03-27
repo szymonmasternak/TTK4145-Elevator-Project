@@ -119,7 +119,9 @@ func (enl *ElevNetListen) Start() error {
 				continue
 			}
 			enl.ElevatorsFoundOnNetwork <- msg
-			enl.inboundReqArrayChannel <- msg.RequestStatesMsg
+			if msg.ElevatorData.Identifier != enl.elevMetaData.Identifier {
+				enl.inboundReqArrayChannel <- msg.RequestStatesMsg
+			}
 		}
 	}()
 
