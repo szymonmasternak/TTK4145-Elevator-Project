@@ -55,12 +55,6 @@ type AckPacket struct {
 }
 
 // From here is all the network stuff
-type NetworkElevatorState struct {
-	State             elevstate.ElevatorState
-	LastHeartbeatTime time.Time
-	LastStateUpdate   time.Time
-	Alive             bool
-}
 
 const (
 	HEARTBEAT_INTERVAL      = 500 * time.Millisecond
@@ -74,9 +68,12 @@ const (
 )
 
 type Node struct {
-	MetaData elevmetadata.ElevMetaData
-	State    NetworkElevatorState
-	Mutex    sync.Mutex
+	MetaData          elevmetadata.ElevMetaData
+	State             elevstate.ElevatorState
+	LastHeartbeatTime time.Time
+	LastStateUpdate   time.Time
+	Alive             bool
+	Mutex             sync.Mutex
 }
 
 type ElevatorNetwork struct {
@@ -320,8 +317,8 @@ func (en *ElevatorNetwork) handleElevatorHeartbeat(heartbeat HeartBeatPacket) {
 
 	if exists {
 		node.Mutex.Lock()
-		node.State.LastHeartbeatTime = time.Now()
-		node.State.Alive = true
+		node.LastHeartbeatTime = time.Now()
+		node.Alive = true
 		node.Mutex.Unlock()
 	} else {
 		//node doesnt exist. register new one
@@ -330,16 +327,14 @@ func (en *ElevatorNetwork) handleElevatorHeartbeat(heartbeat HeartBeatPacket) {
 		//todo perhaps request new states from node?
 		en.nodes[nodeID] = &Node{
 			MetaData: heartbeat.MetaData,
-			State: NetworkElevatorState{
-				State: elevstate.ElevatorState{
-					Floor:     -1,
-					Dirn:      elevconsts.Stop,
-					Behaviour: elevconsts.Idle,
-				},
-				LastHeartbeatTime: time.Now(),
-				LastStateUpdate:   time.Now(),
-				Alive:             true,
+			State: elevstate.ElevatorState{
+				Floor:     -1,
+				Dirn:      elevconsts.Stop,
+				Behaviour: elevconsts.Idle,
 			},
+			LastHeartbeatTime: time.Now(),
+			LastStateUpdate:   time.Now(),
+			Alive:             true,
 		}
 	}
 }
@@ -368,7 +363,7 @@ func (en *ElevatorNetwork) sendAcknowledgement(messageHash string, nodeID string
 
 func (en *ElevatorNetwork) sendWithRetry(data []byte, node *Node) bool {
 	node.Mutex.Lock()
-	if !node.State.Alive {
+	if !node.Alive {
 		node.Mutex.Unlock()
 		return false
 	}
@@ -406,7 +401,7 @@ func (en *ElevatorNetwork) sendWithRetry(data []byte, node *Node) bool {
 	if ok {
 		//If node is set to alive, then mark it as dead
 		node.Mutex.Lock()
-		node.State.Alive = false
+		node.Alive = false
 		node.Mutex.Unlock()
 	}
 	en.nodesMutex.Unlock()
@@ -428,7 +423,7 @@ func (en *ElevatorNetwork) sendState() {
 	nodes := make([]*Node, 0, len(en.nodes))
 	for _, node := range en.nodes {
 		node.Mutex.Lock()
-		if node.State.Alive {
+		if node.Alive {
 			nodes = append(nodes, node)
 		}
 		node.Mutex.Unlock()
@@ -469,8 +464,8 @@ func (en *ElevatorNetwork) handleStatePacket(packet StatePacket) {
 	node, exists := en.nodes[packet.MetaData.Identifier]
 	if exists {
 		node.Mutex.Lock()
-		node.State.State = packet.State
-		node.State.LastStateUpdate = time.Now()
+		node.State = packet.State
+		node.LastStateUpdate = time.Now()
 		node.Mutex.Unlock()
 
 		Logger.Debug().Msgf("Updated state for elevator %s", packet.MetaData.Identifier)
@@ -485,12 +480,12 @@ func (en *ElevatorNetwork) checkNodes() {
 
 	for id, node := range en.nodes {
 		node.Mutex.Lock()
-		timeSinceLastNodeHeartBeat := time.Since(node.State.LastHeartbeatTime)
+		timeSinceLastNodeHeartBeat := time.Since(node.LastHeartbeatTime)
 
 		if timeSinceLastNodeHeartBeat > NODE_TIMEOUT {
-			if node.State.Alive {
+			if node.Alive {
 				Logger.Warn().Msgf("Deleting Node %s after not responding for %v", id, timeSinceLastNodeHeartBeat)
-				node.State.Alive = false
+				node.Alive = false
 			}
 		}
 		node.Mutex.Unlock()
@@ -509,7 +504,7 @@ func (en *ElevatorNetwork) GetNodesConnected() int {
 
 	for _, node := range en.nodes {
 		node.Mutex.Lock()
-		if node.State.Alive {
+		if node.Alive {
 			counter++
 		}
 		node.Mutex.Unlock()
