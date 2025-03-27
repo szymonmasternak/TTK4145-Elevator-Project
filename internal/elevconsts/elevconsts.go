@@ -9,11 +9,11 @@ type Dirn int
 
 func (d Dirn) String() string {
 	switch d {
-	case Up:
+	case UP:
 		return "up"
-	case Down:
+	case DOWN:
 		return "down"
-	case Stop:
+	case STOP:
 		return "stop"
 	default:
 		return "Undefined"
@@ -21,26 +21,26 @@ func (d Dirn) String() string {
 }
 
 const (
-	Down Dirn = -1
-	Stop Dirn = 0
-	Up   Dirn = 1
+	DOWN Dirn = -1
+	STOP Dirn = 0
+	UP   Dirn = 1
 )
 
 type Button int
 
 const (
-	HallUp Button = iota
-	HallDown
-	Cab
+	HALL_UP Button = iota
+	HALL_DOWN
+	CAB
 )
 
 func (b Button) String() string {
 	switch b {
-	case HallUp:
+	case HALL_UP:
 		return "B_HallUp"
-	case HallDown:
+	case HALL_DOWN:
 		return "B_HallDown"
-	case Cab:
+	case CAB:
 		return "B_Cab"
 	default:
 		return "B_UNDEFINED"
@@ -50,18 +50,18 @@ func (b Button) String() string {
 type ElevatorBehaviour int
 
 const (
-	Idle ElevatorBehaviour = iota // 0
-	DoorOpen
-	Moving
+	IDLE ElevatorBehaviour = iota // 0
+	DOOR_OPEN
+	MOVING
 )
 
 func (eb ElevatorBehaviour) String() string {
 	switch eb {
-	case Idle:
+	case IDLE:
 		return "idle"
-	case DoorOpen:
+	case DOOR_OPEN:
 		return "doorOpen"
-	case Moving:
+	case MOVING:
 		return "moving"
 	default:
 		return "EB_UNDEFINED"
@@ -71,6 +71,6 @@ func (eb ElevatorBehaviour) String() string {
 type ClearRequestVariant int
 
 const (
-	All ClearRequestVariant = iota
-	InDirn
+	ALL ClearRequestVariant = iota
+	IN_DIRN
 )

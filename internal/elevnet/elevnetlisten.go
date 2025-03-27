@@ -5,20 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
-	"sync"
-	"syscall"
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requestconfirmation"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/libs/Network-go/network/conn"
 )
 
-const ConnectionCheck = 1000 * time.Millisecond
-const WaitForReconnection = 2000 * time.Millisecond
+const (
+	CONNECTION_CHECK   = 1000 * time.Millisecond
+	WAIT_FOR_RECONNECT = 2000 * time.Millisecond
+)
 
-// ElevatorListObject holds a received message and its status.
 type ElevatorListObject struct {
 	msg              ElevatorMessage
 	timeSeen         time.Time
@@ -26,76 +25,42 @@ type ElevatorListObject struct {
 	timeDisconnected time.Time
 }
 
-// ElevNetListen encapsulates the listening functionality.
 type ElevNetListen struct {
-	// Channel for forwarding received broadcast messages.
 	ElevatorsFoundOnNetwork chan ElevatorMessage
-	stateInChannel          <-chan elevstate.ElevatorState
 	stateOutChannel         <-chan elevstate.ElevatorState
 	inboundReqArrayChannel  chan<- requestconfirmation.RequestArrayMessage
 	alivePeersChannel       chan<- []string
+	stateMapChannel         chan<- map[string]elevstate.ElevatorState
 
-	listening        bool                       // internal flag
-	startStopCh      chan int                   // for shutdown signaling
-	conn             net.PacketConn             // Changed to use net.PacketConn
-	elevMetaData     *elevmetadata.ElevMetaData // metadata for this elevator
-	elevatorArray    []ElevatorListObject
-	elevatorArrayMtx sync.Mutex
-	ElevatorState    *elevstate.ElevatorState
+	listening         bool
+	startStopCh       chan int
+	conn              net.PacketConn
+	elevatorArrayChan chan func([]ElevatorListObject) []ElevatorListObject
 }
 
 func NewElevNetListen(elevMetaData *elevmetadata.ElevMetaData, elevatorState *elevstate.ElevatorState, stateOutChannel <-chan elevstate.ElevatorState, inboundReqArrayCh chan<- requestconfirmation.RequestArrayMessage, alivePeersChannel chan<- []string) *ElevNetListen {
-	return &ElevNetListen{
-		ElevatorsFoundOnNetwork: make(chan ElevatorMessage, 10000), // buffered to avoid blocking
+	enl := &ElevNetListen{
+		ElevatorsFoundOnNetwork: make(chan ElevatorMessage, 10000),
 		stateOutChannel:         stateOutChannel,
 		inboundReqArrayChannel:  inboundReqArrayCh,
 		alivePeersChannel:       alivePeersChannel,
-
-		listening:     false,
-		startStopCh:   make(chan int),
-		conn:          nil,
-		elevMetaData:  elevMetaData,
-		ElevatorState: elevatorState,
+		listening:               false,
+		startStopCh:             make(chan int),
+		elevatorArrayChan:       make(chan func([]ElevatorListObject) []ElevatorListObject),
 	}
+
+	go func() {
+		elevatorArray := []ElevatorListObject{}
+		for fn := range enl.elevatorArrayChan {
+			elevatorArray = fn(elevatorArray)
+		}
+	}()
+
+	return enl
 }
 
-// Start starts the listener by binding to the UDP address and launching goroutines.
 func (enl *ElevNetListen) Start() error {
-	// localAddr, err := net.ResolveUDPAddr("udp", enl.elevMetaData.IpAddress+":9999")
-	// if err != nil {
-	// 	return fmt.Errorf("error resolving local UDP address: %v", err)
-	// }
-
-	// Create UDP socket manually with SO_REUSEADDR
-	s, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP)
-	if err != nil {
-		fmt.Println("Error: Socket:", err)
-	}
-	syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
-	if err != nil {
-		fmt.Println("Error: SetSockOpt REUSEADDR:", err)
-	}
-	syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1)
-	if err != nil {
-		fmt.Println("Error: SetSockOpt BROADCAST:", err)
-	}
-	syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
-	if err != nil {
-		fmt.Println("Error: SetSockOpt REUSEPORT:", err)
-	}
-	syscall.Bind(s, &syscall.SockaddrInet4{Port: 9999})
-	if err != nil {
-		fmt.Println("Error: Bind:", err)
-	}
-
-	f := os.NewFile(uintptr(s), "")
-	c, err := net.FilePacketConn(f)
-	if err != nil {
-		fmt.Println("Error: FilePacketConn:", err)
-	}
-	f.Close()
-	// Use the returned PacketConn directly.
-	enl.conn = c
+	enl.conn = conn.DialBroadcastUDP(9999)
 
 	listenBuffer := make([]byte, BUFFER_LENGTH)
 	enl.listening = true
@@ -103,7 +68,6 @@ func (enl *ElevNetListen) Start() error {
 
 	go func() {
 		for {
-			// Use ReadFrom instead of ReadFromUDP.
 			n, _, err := enl.conn.ReadFrom(listenBuffer[0:])
 			if err != nil {
 				if opErr, ok := err.(*net.OpError); ok && opErr.Err.Error() == "use of closed network connection" {
@@ -160,86 +124,103 @@ func (enl *ElevNetListen) Stop() error {
 	if !enl.listening {
 		return errors.New("cannot stop listening if nodeListen is not listening")
 	}
-
 	enl.startStopCh <- 0
 	enl.listening = false
 	return nil
 }
 
-func (nl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
-	nl.elevatorArrayMtx.Lock()
-	defer nl.elevatorArrayMtx.Unlock()
-	var elevatorFound bool
-	elevatorFound = false
-	for i := 0; i < len(nl.elevatorArray); i++ {
-		if msg.ElevatorData.Identifier == nl.elevatorArray[i].msg.ElevatorData.Identifier {
-			elevatorFound = true
-			nl.elevatorArray[i].timeSeen = time.Now()
-			nl.elevatorArray[i].disconnected = false
-			nl.elevatorArray[i].msg.ElevatorState = msg.ElevatorState
-			break
-		}
-	}
-	if !elevatorFound {
-		nl.elevatorArray = append(nl.elevatorArray, ElevatorListObject{msg, time.Now(), false, time.Time{}})
-	}
-	Logger.Info().Msgf("Node list: ")
-
-	filtered := nl.elevatorArray[:0] // Keep only valid elements
-
-	for i := 0; i < len(nl.elevatorArray); i++ {
-		if time.Now().Before(nl.elevatorArray[i].timeSeen.Add(ConnectionCheck)) {
-			filtered = append(filtered, nl.elevatorArray[i]) // Keep only non-stale nodes
-			fmt.Printf("%v, ", nl.elevatorArray[i].msg.ElevatorData.Identifier)
-		} else {
-			nl.elevatorArray[i].disconnected = true
-			if nl.elevatorArray[i].timeDisconnected.IsZero() {
-				nl.elevatorArray[i].timeDisconnected = time.Now()
+func (enl *ElevNetListen) AddNodeToList(msg ElevatorMessage) {
+	enl.elevatorArrayChan <- func(array []ElevatorListObject) []ElevatorListObject {
+		var elevatorFound bool
+		for i := 0; i < len(array); i++ {
+			if msg.ElevatorData.Identifier == array[i].msg.ElevatorData.Identifier {
+				elevatorFound = true
+				array[i].timeSeen = time.Now()
+				array[i].disconnected = false
+				array[i].msg.ElevatorState = msg.ElevatorState
+				break
 			}
-			Logger.Info().Msg("Elevator disconnected, waiting for reconnect")
-			if time.Now().Before(nl.elevatorArray[i].timeDisconnected.Add(WaitForReconnection)) {
-				filtered = append(filtered, nl.elevatorArray[i])
+		}
+		if !elevatorFound {
+			array = append(array, ElevatorListObject{msg, time.Now(), false, time.Time{}})
+		}
+
+		filtered := array[:0]
+		for i := 0; i < len(array); i++ {
+			if time.Now().Before(array[i].timeSeen.Add(CONNECTION_CHECK)) {
+				filtered = append(filtered, array[i])
+				fmt.Printf("%v, ", array[i].msg.ElevatorData.Identifier)
 			} else {
-				Logger.Info().Msg("Elevator didn't reconnect in time, removing from list")
+				array[i].disconnected = true
+				if array[i].timeDisconnected.IsZero() {
+					array[i].timeDisconnected = time.Now()
+				}
+				Log.Info().Msg("Elevator disconnected, waiting for reconnect")
+				if time.Now().Before(array[i].timeDisconnected.Add(WAIT_FOR_RECONNECT)) {
+					filtered = append(filtered, array[i])
+				} else {
+					Log.Info().Msg("Elevator didn't reconnect in time, removing from list")
+				}
 			}
 		}
+		Log.Info().Msgf("Current list of elevators: %v", func() []string {
+			var ids []string
+			for _, e := range filtered {
+				ids = append(ids, e.msg.ElevatorData.Identifier)
+			}
+			return ids
+		}())
+		fmt.Printf("\n")
+		return filtered
 	}
-	fmt.Printf("\n")
-	nl.elevatorArray = filtered // Update original slice
 }
 
-func (nl *ElevNetListen) GetElevatorStateMap() map[string]elevstate.ElevatorState {
-	nl.elevatorArrayMtx.Lock()
-	defer nl.elevatorArrayMtx.Unlock()
-
-	messages := make(map[string]elevstate.ElevatorState)
-	for _, obj := range nl.elevatorArray {
-		identifier := obj.msg.ElevatorData.Identifier
-		messages[identifier] = obj.msg.ElevatorState
-	}
-	return messages
-}
-
-func (nl *ElevNetListen) GetAliveElevatorIDs() []string {
-	nl.elevatorArrayMtx.Lock()
-	defer nl.elevatorArrayMtx.Unlock()
-
-	var aliveIDs []string
-	for _, elevator := range nl.elevatorArray {
-		if !elevator.disconnected {
-			aliveIDs = append(aliveIDs, elevator.msg.ElevatorData.Identifier)
+func (enl *ElevNetListen) GetElevatorStateMap() map[string]elevstate.ElevatorState {
+	result := make(chan map[string]elevstate.ElevatorState)
+	enl.elevatorArrayChan <- func(array []ElevatorListObject) []ElevatorListObject {
+		states := make(map[string]elevstate.ElevatorState)
+		for _, obj := range array {
+			states[obj.msg.ElevatorData.Identifier] = obj.msg.ElevatorState
 		}
+		go func() { result <- states }()
+		return array
 	}
-	return aliveIDs
+	return <-result
 }
 
-func (nl *ElevNetListen) BroadcastAlivePeers() {
-	if nl.alivePeersChannel == nil {
+func (enl *ElevNetListen) GetAliveElevatorIDs() []string {
+	result := make(chan []string)
+	enl.elevatorArrayChan <- func(array []ElevatorListObject) []ElevatorListObject {
+		var ids []string
+		for _, obj := range array {
+			if !obj.disconnected {
+				ids = append(ids, obj.msg.ElevatorData.Identifier)
+			}
+		}
+		go func() { result <- ids }()
+		return array
+	}
+	return <-result
+}
+
+func (enl *ElevNetListen) BroadcastAlivePeers() {
+	if enl.alivePeersChannel == nil {
 		return
 	}
 	select {
-	case nl.alivePeersChannel <- nl.GetAliveElevatorIDs():
+	case enl.alivePeersChannel <- enl.GetAliveElevatorIDs():
 	default:
-		Logger.Warn().Msg("alivePeersChannel full, skipping broadcast")
+		Log.Warn().Msg("alivePeersChannel full, skipping broadcast")
+	}
+}
+
+func (enl *ElevNetListen) BroadcastStateMap() {
+	if enl.stateMapChannel == nil {
+		return
+	}
+	select {
+	case enl.stateMapChannel <- enl.GetElevatorStateMap():
+	default:
+		Log.Warn().Msg("stateMapChannel full, skipping broadcast")
 	}
 }
