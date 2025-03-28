@@ -18,7 +18,7 @@ func GetGitHash() string {
 	return gitHash
 }
 
-func ProcessCmdArgs() (string, uint16, bool, string, uint16) {
+func ProcessCmdArgs() (string, uint16, bool, string, uint16, bool) {
 	help := flag.Bool("help", false, "Show Help Window")
 	version := flag.Bool("version", false, "Show Version")
 	identifier := flag.String("id", "", "Set the identifier of the elevator. Defaults to random string")
@@ -26,6 +26,7 @@ func ProcessCmdArgs() (string, uint16, bool, string, uint16) {
 	driverIPAddress := flag.String("driverip", "localhost:15657", "Set the IP address of the driver.")
 	clearUpDownOnArrival := flag.Bool("clearupdownonarrival", false, "Clear the Up and Down requests at floor arrival. Defaults to false")
 	udpPort := flag.Uint64("udpport", 53317, "Set the port number that the elevator communicates on.")
+	loadStateFromFile := flag.Bool("loadstate", false, "Load elevator state from file. Defaults to false")
 
 	flag.Parse()
 
@@ -67,7 +68,7 @@ func ProcessCmdArgs() (string, uint16, bool, string, uint16) {
 		os.Exit(0)
 	}
 
-	return *identifier, uint16(*portNumber), *clearUpDownOnArrival, *driverIPAddress, uint16(*udpPort)
+	return *identifier, uint16(*portNumber), *clearUpDownOnArrival, *driverIPAddress, uint16(*udpPort), *loadStateFromFile
 }
 
 var localIP string //local string, not to be accessed anywhere

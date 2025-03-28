@@ -26,6 +26,7 @@ const (
 	COMMAND_CHANNEL_SIZE     = 1
 	IDENTIFIER_DEFAULT_LEN   = 10
 	NETWORK_MSG_CHANNEL_SIZE = 1
+	SAVED_STATE_FILE_NAME    = "elevator_state.json"
 )
 
 type Elevator struct {
@@ -45,7 +46,7 @@ type Elevator struct {
 	cancelArray    []context.CancelFunc
 }
 
-func NewElevator(identifier string, portNumber uint16, driverIPAddress string, clearUpDownOnArrival bool, udpPort uint16) *Elevator {
+func NewElevator(identifier string, portNumber uint16, driverIPAddress string, clearUpDownOnArrival bool, udpPort uint16, shouldLoadState bool) *Elevator {
 	if identifier == "" {
 		identifier = randomstring.EnglishFrequencyString(IDENTIFIER_DEFAULT_LEN) //this should be random enough
 		Logger.Warn().Msgf("No elevator identifier provided, generated random identifier \"%v\"", identifier)
@@ -71,6 +72,10 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 	stateNetChannel := make(chan elevconsts.ElevatorStateNetMsg, 1)
 
 	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
+	if shouldLoadState {
+		elevstate.InitializeState(elevState, SAVED_STATE_FILE_NAME)
+	}
+
 	time.Sleep(3000 * time.Millisecond)
 	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateNetChannel, eventChannel)
 

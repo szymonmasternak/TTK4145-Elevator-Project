@@ -76,7 +76,7 @@ type CostResponsePacket struct {
 type DoRequestPacket struct {
 	NetworkPacket
 	Floor  int               `json:"floor"`
-	Button elevconsts.Button `json:"cost"`
+	Button elevconsts.Button `json:"cost"`  //CHANGEE
 }
 
 // From here is all the network stuff

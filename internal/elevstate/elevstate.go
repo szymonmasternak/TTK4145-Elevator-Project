@@ -2,7 +2,9 @@ package elevstate
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
 	"sync"
 	"time"
 
@@ -31,6 +33,9 @@ type ElevatorState struct {
 	commandChannel      chan<- elevcmd.ElevatorCommand
 
 	stateNetChannel chan elevconsts.ElevatorStateNetMsg
+
+	// A mutex to protect state persistence.
+	saveMutex sync.Mutex
 }
 
 func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateNetChannel chan elevconsts.ElevatorStateNetMsg) *ElevatorState {
@@ -55,6 +60,20 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 		stateNetChannel: stateNetChannel,
 	}
 	return elevatorState
+}
+func InitializeState(es *ElevatorState, filename string) {
+	if _, err := os.Stat(filename); err == nil {
+		// File exists, so load persisted state
+		if err := es.LoadState(filename); err != nil {
+			Log.Error().Msgf("Error loading persisted state: %v", err)
+		} else {
+			Log.Info().Msg("Persisted state loaded successfully")
+		}
+	} else if os.IsNotExist(err) {
+		Log.Info().Msg("No persisted state found, starting with a fresh state")
+	} else {
+		Log.Error().Msgf("Error checking state file: %v", err)
+	}
 }
 
 func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) error {
@@ -112,6 +131,15 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 				case elevevent.NetworkButtonEvent:
 					Log.Info().Msgf("Network Button Pressed (%d, %s)", evnt.Floor, evnt.Button.String())
 					es.handleButtonPress(evnt.Floor, evnt.Button, true)
+
+					// Optionally save state after each event that modifies the state.
+					if err := es.SaveState("elevator_state.json"); err != nil {
+						Log.Error().Msgf("Failed to save state: %v", err)
+					}
+				}
+				// Optionally save state after each event that modifies the state.
+				if err := es.SaveState("elevator_state.json"); err != nil {
+					Log.Error().Msgf("Failed to save state: %v", err)
 				}
 			default:
 				if time.Now().After(es.doorOpenTime.Add(es.doorOpenDuration)) {
@@ -331,4 +359,64 @@ func (es ElevatorState) CalculateTimeToServeReq(Floor int, Button elevconsts.But
 		duration += elevconsts.ELEVATOR_TRAVEL_DURATION
 	}
 	return duration
+}
+
+// savedState is the subset of ElevatorState that we want to persist.
+type savedState struct {
+	Floor        int                                            `json:"floor"`
+	Dirn         elevconsts.Dirn                                `json:"dirn"`
+	Requests     [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int `json:"requests"`
+	Behaviour    elevconsts.ElevatorBehaviour                   `json:"behaviour"`
+	DoorOpenTime time.Time                                      `json:"door_open_time"`
+}
+
+// SaveState writes the current persistent state to the given filename.
+// It writes to a temporary file and renames it for atomicity.
+func (es *ElevatorState) SaveState(filename string) error {
+	es.saveMutex.Lock()
+	defer es.saveMutex.Unlock()
+
+	ps := savedState{
+		Floor:        es.Floor,
+		Dirn:         es.Dirn,
+		Requests:     es.Requests,
+		Behaviour:    es.Behaviour,
+		DoorOpenTime: es.doorOpenTime,
+	}
+
+	data, err := json.Marshal(ps)
+	if err != nil {
+		return err
+	}
+
+	tempFile := filename + ".tmp"
+	if err := os.WriteFile(tempFile, data, 0644); err != nil {
+		return err
+	}
+	Log.Info().Msgf("Saved elevator state to %s", filename)
+	return os.Rename(tempFile, filename)
+}
+
+// LoadState reads the persisted state from the given filename and updates ElevatorState.
+func (es *ElevatorState) LoadState(filename string) error {
+	es.saveMutex.Lock()
+	defer es.saveMutex.Unlock()
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	var ss savedState
+	if err := json.Unmarshal(data, &ss); err != nil {
+		return err
+	}
+	Log.Info().Msgf("Loaded saved state %v", ss)
+
+	es.Floor = ss.Floor
+	es.Dirn = ss.Dirn
+	es.Requests = ss.Requests
+	es.Behaviour = ss.Behaviour
+	es.doorOpenTime = ss.DoorOpenTime
+
+	return nil
 }
