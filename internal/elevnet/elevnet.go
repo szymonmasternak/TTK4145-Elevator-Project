@@ -15,73 +15,13 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevevent"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstatenetmsg"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 )
 
 var Logger = logger.GetLogger()
 
-// All structs for network messages
-type NetworkPacketType int
-
-const (
-	PACKET_TYPE_HEARTBEAT NetworkPacketType = iota
-	PACKET_TYPE_STATE
-	PACKET_TYPE_BUTTON
-	PACKET_TYPE_ACK
-	PACKET_TYPE_COST_REQ
-	PACKET_TYPE_COST_RESP
-	PACKET_TYPE_DO_REQ
-)
-
-type NetworkPacket struct {
-	PacketType NetworkPacketType         `json:"packet_type"`
-	MetaData   elevmetadata.ElevMetaData `json:"meta_data"`
-	Time       time.Time                 `json:"time"`
-}
-
-type HeartBeatPacket struct {
-	NetworkPacket
-}
-
-type StatePacket struct {
-	NetworkPacket
-	State elevstate.ElevatorState `json:"state"`
-}
-
-type ButtonPacket struct {
-	NetworkPacket
-	Floor  int               `json:"floor"`
-	Button elevconsts.Button `json:"button"`
-}
-
-type AckPacket struct {
-	NetworkPacket
-	MessageHash string `json:"message_hash"` // Hash of the original message
-}
-
-type CostRequestPacket struct {
-	NetworkPacket
-	Floor                int               `json:"floor"`
-	Button               elevconsts.Button `json:"button"`
-	CalculationRequestID string            `json:"calculation_request_id"`
-}
-
-type CostResponsePacket struct {
-	NetworkPacket
-	Floor                int               `json:"floor"`
-	Button               elevconsts.Button `json:"button"`
-	Cost                 time.Duration     `json:"cost"`
-	CalculationRequestID string            `json:"calculation_request_id"`
-}
-
-type DoRequestPacket struct {
-	NetworkPacket
-	Floor  int               `json:"floor"`
-	Button elevconsts.Button `json:"cost"`
-}
-
 // From here is all the network stuff
-
 const (
 	HEARTBEAT_INTERVAL      = 500 * time.Millisecond
 	SEND_STATE_INTERVAL     = 1 * time.Second
@@ -102,16 +42,6 @@ type Node struct {
 	Mutex             sync.Mutex
 }
 
-type CostCalculation struct {
-	RequestID   string
-	Floor       int
-	Button      elevconsts.Button
-	Responses   map[string]time.Duration
-	StartTime   time.Time
-	Timeout     time.Time
-	FromNetwork bool
-}
-
 type ElevatorNetwork struct {
 	metaData *elevmetadata.ElevMetaData
 
@@ -129,14 +59,11 @@ type ElevatorNetwork struct {
 	receiveChannel chan AckPacket
 	initialised    bool
 
-	stateNetChannel chan elevconsts.ElevatorStateNetMsg
-
-	costRespChannel chan CostResponsePacket
-
-	eventChannel chan elevevent.ElevatorEvent
+	stateNetChannel chan elevstatenetmsg.ElevatorStateNetMsg
+	eventChannel    chan elevevent.ElevatorEvent
 }
 
-func NewElevatorNetwork(metaData *elevmetadata.ElevMetaData, state *elevstate.ElevatorState, stateNetChannel chan elevconsts.ElevatorStateNetMsg, eventChannel chan elevevent.ElevatorEvent) *ElevatorNetwork {
+func NewElevatorNetwork(metaData *elevmetadata.ElevMetaData, state *elevstate.ElevatorState, stateNetChannel chan elevstatenetmsg.ElevatorStateNetMsg, eventChannel chan elevevent.ElevatorEvent) *ElevatorNetwork {
 	return &ElevatorNetwork{
 		metaData:        metaData,
 		nodes:           make(map[string]*Node, 10), //TODO: Remove magic Number
@@ -145,7 +72,6 @@ func NewElevatorNetwork(metaData *elevmetadata.ElevMetaData, state *elevstate.El
 		initialised:     true,
 		stateNetChannel: stateNetChannel,
 		eventChannel:    eventChannel,
-		costRespChannel: make(chan CostResponsePacket, 10), //TODO: Remove magic Number
 	}
 }
 
@@ -178,7 +104,7 @@ func (en *ElevatorNetwork) Start(ctx context.Context, wg *sync.WaitGroup) error 
 		return fmt.Errorf("error setting up direct communication socket: %v", err)
 	}
 
-	wg.Add(5)
+	wg.Add(6)
 	//Heartbeat Broadcast
 	go func() {
 		defer wg.Done()
@@ -276,11 +202,24 @@ func (en *ElevatorNetwork) Start(ctx context.Context, wg *sync.WaitGroup) error 
 
 				shouldHandleLocally := en.processHallButtonRequest(msg.Floor, msg.Button)
 
-				en.stateNetChannel <- elevconsts.ElevatorStateNetMsg{
+				en.stateNetChannel <- elevstatenetmsg.ElevatorStateNetMsg{
 					Floor:           msg.Floor,
 					Button:          msg.Button,
 					ShouldDoRequest: shouldHandleLocally,
 				}
+			}
+		}
+	}()
+
+	//Debug Thread
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(1 * time.Second):
+				num := en.GetNodesConnected()
+				Logger.Info().Msgf("Elevators Connected: %d", num)
 			}
 		}
 	}()
@@ -402,16 +341,6 @@ func (en *ElevatorNetwork) handleDirectMessage(data []byte, address *net.UDPAddr
 		}
 		en.sendAcknowledgement(packetHash, packet.MetaData.Identifier, address)
 		en.handleStatePacket(statePacket)
-
-	case PACKET_TYPE_BUTTON:
-		var buttonPacket ButtonPacket
-		if err := json.Unmarshal(data, &buttonPacket); err != nil {
-			Logger.Error().Msgf("Failed to unmarshal button packet: %v", err)
-			return
-		}
-		en.sendAcknowledgement(packetHash, packet.MetaData.Identifier, address)
-		// en.handleButtonPacket(buttonPacket)
-
 	case PACKET_TYPE_ACK:
 		var ackPacket AckPacket
 		if err := json.Unmarshal(data, &ackPacket); err != nil {
@@ -422,26 +351,6 @@ func (en *ElevatorNetwork) handleDirectMessage(data []byte, address *net.UDPAddr
 		select {
 		case en.receiveChannel <- ackPacket:
 			//Logger.Debug().Msgf("Received acknowledge hash: %s", ackPacket.MessageHash)
-		default:
-			Logger.Error().Msg("FIX THIS SHOULD NEVER HAPPEN")
-		}
-	case PACKET_TYPE_COST_REQ:
-		var costReqPacket CostRequestPacket
-		if err := json.Unmarshal(data, &costReqPacket); err != nil {
-			Logger.Error().Msgf("Failed to unmarshal ACK packet: %v", err)
-			return
-		}
-		en.sendAcknowledgement(packetHash, packet.MetaData.Identifier, address)
-		// en.handleCostReqPacket(costReqPacket)
-
-	case PACKET_TYPE_COST_RESP:
-		var costRespPacket CostResponsePacket
-		if err := json.Unmarshal(data, &costRespPacket); err != nil {
-			Logger.Error().Msgf("Failed to unmarshal ACK packet: %v", err)
-			return
-		}
-		select {
-		case en.costRespChannel <- costRespPacket:
 		default:
 			Logger.Error().Msg("FIX THIS SHOULD NEVER HAPPEN")
 		}

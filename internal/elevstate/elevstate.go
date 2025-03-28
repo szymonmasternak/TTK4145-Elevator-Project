@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstatenetmsg"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
@@ -29,12 +30,10 @@ type ElevatorState struct {
 	doorOpenTime        time.Time
 	eventChannel        <-chan elevevent.ElevatorEvent
 	commandChannel      chan<- elevcmd.ElevatorCommand
-
-	stateNetChannel chan elevconsts.ElevatorStateNetMsg
+	stateNetChannel     chan elevstatenetmsg.ElevatorStateNetMsg
 }
 
-func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateNetChannel chan elevconsts.ElevatorStateNetMsg) *ElevatorState {
-
+func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateNetChannel chan elevstatenetmsg.ElevatorStateNetMsg) *ElevatorState {
 	clearRequestVariant := elevconsts.InDirn
 	if clearUpDownOnArrival {
 		clearRequestVariant = elevconsts.All
@@ -183,7 +182,7 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 
 	if !fromNetwork {
 		if btnType == elevconsts.HallDown || btnType == elevconsts.HallUp {
-			es.stateNetChannel <- elevconsts.ElevatorStateNetMsg{Floor: btnFloor, Button: btnType, TimeoutOccured: false}
+			es.stateNetChannel <- elevstatenetmsg.ElevatorStateNetMsg{Floor: btnFloor, Button: btnType, TimeoutOccured: false}
 
 			select {
 			case msg := <-es.stateNetChannel:
@@ -195,7 +194,7 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 				}
 			case <-time.After(time.Second): //TODO fix
 				Log.Warn().Msgf("Timeout, network module timeout, continuing to serve locally")
-				es.stateNetChannel <- elevconsts.ElevatorStateNetMsg{Floor: btnFloor, Button: btnType, TimeoutOccured: true}
+				es.stateNetChannel <- elevstatenetmsg.ElevatorStateNetMsg{Floor: btnFloor, Button: btnType, TimeoutOccured: true}
 			}
 		}
 	}

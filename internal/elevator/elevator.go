@@ -3,7 +3,6 @@ package elevator
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
@@ -11,6 +10,7 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevio"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevnet"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstatenetmsg"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevutils"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 
@@ -68,10 +68,8 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 	}
 
 	//TODO Fix this
-	stateNetChannel := make(chan elevconsts.ElevatorStateNetMsg, 1)
-
+	stateNetChannel := make(chan elevstatenetmsg.ElevatorStateNetMsg, 1)
 	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
-	time.Sleep(3000 * time.Millisecond)
 	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateNetChannel, eventChannel)
 
 	return &Elevator{
@@ -110,22 +108,12 @@ func (e *Elevator) Start() {
 	e.State.Start(ctxState, wgState)
 	e.cancelArray = append(e.cancelArray, cancelState)
 
+	//Network Thread
 	ctxNetwork, cancelNetwork := context.WithCancel(context.Background())
 	wgNetwork := &sync.WaitGroup{}
 	e.waitGroupArray = append(e.waitGroupArray, wgNetwork)
 	e.Network.Start(ctxNetwork, wgNetwork)
 	e.cancelArray = append(e.cancelArray, cancelNetwork)
-
-	//For Debug
-	go func() {
-		for {
-			time.Sleep(time.Second)
-			num := e.Network.GetNodesConnected()
-			Logger.Info().Msgf("Elevators Connected: %d", num)
-		}
-	}()
-
-	//Todo add other threads
 
 	e.running = true
 }
