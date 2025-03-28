@@ -1,6 +1,8 @@
 # TTK4145-Elevator-Project
 
-Group project for the NTNU TTK4145 Real-time Programming Module
+Group project for the NTNU TTK4145 Real-time Programming Module.
+
+Peer-to-peer elevator network based on UDP communication, programmed using GoLang.
 
 ## How to Run the Project
 
@@ -21,6 +23,8 @@ This project comes with some unit tests that test the software. These can be ran
 ```terminal
 make test
 ```
+
+The tests covered are: [elevcmd.go](./internal/elevcmd/elevcmd.go), [elevevent_test.go](./internal/elevevent/elevevent_test.go), [elevmetadata_test.go](./internal/elevmetadata/elevmetadata_test.go), [elevstate_test.go](./internal/elevstate/elevstate_test.go), [elevutils_test.go](./internal/elevutils/elevutils_test.go), [logger_test.go](./internal/logger/logger_test.go).
 
 ## How to cross compile for a different platform.
 
