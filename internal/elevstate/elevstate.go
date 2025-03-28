@@ -269,6 +269,7 @@ func (es *ElevatorState) handleDoorTimeout() {
 
 func (es *ElevatorState) handleStopButton(stopButtonState bool) {
 	es.stopButton = stopButtonState
+	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.StopLampCommand{Value: es.stopButton}}
 
 	if es.stopButton {
 		es.Dirn = elevconsts.Stop
@@ -302,6 +303,9 @@ func (es ElevatorState) CalculateTimeToServeReq(Floor int, Button elevconsts.But
 		}
 	}
 	var duration time.Duration
+	if es.Behaviour == elevconsts.DoorOpen {
+		duration += es.doorOpenDuration * 10 //Penalty to not assign orders to open doors :-)
+	}
 
 	switch esCopy.Behaviour {
 	case elevconsts.Idle:
