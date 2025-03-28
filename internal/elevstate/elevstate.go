@@ -192,7 +192,7 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 				} else {
 					Log.Warn().Msgf("Network Module decided that the button should be served locally")
 				}
-			case <-time.After(time.Second): //TODO fix
+			case <-time.After(time.Second):
 				Log.Warn().Msgf("Timeout, network module timeout, continuing to serve locally")
 				es.stateNetChannel <- elevstatenetmsg.ElevatorStateNetMsg{Floor: btnFloor, Button: btnType, TimeoutOccured: true}
 			}

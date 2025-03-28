@@ -67,7 +67,6 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 		panic("Error Creating ElevIO Object")
 	}
 
-	//TODO Fix this
 	stateNetChannel := make(chan elevstatenetmsg.ElevatorStateNetMsg, 1)
 	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
 	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateNetChannel, eventChannel)

@@ -46,5 +46,5 @@ type AckPacket struct {
 type DoRequestPacket struct {
 	NetworkPacket
 	Floor  int               `json:"floor"`
-	Button elevconsts.Button `json:"cost"`
+	Button elevconsts.Button `json:"button"`
 }

@@ -13,7 +13,7 @@ type ElevatorEvent struct {
 
 type ButtonPressEvent struct {
 	Floor  int
-	Button elevconsts.Button //TODO: Delete ButtonType and replace with Button type?
+	Button elevconsts.Button
 }
 
 func (bpe ButtonPressEvent) Wrap() ElevatorEvent {

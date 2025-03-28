@@ -395,7 +395,6 @@ func (en *ElevatorNetwork) handleElevatorHeartbeat(heartbeat HeartBeatPacket) {
 		//node doesnt exist. register new one
 		Logger.Info().Msgf("New elevator found: %s at %s:%d", nodeID, heartbeat.MetaData.IpAddress, heartbeat.MetaData.PortNumber)
 
-		//todo perhaps request new states from node?
 		en.nodes[nodeID] = &Node{
 			MetaData: heartbeat.MetaData,
 			State: elevstate.ElevatorState{
