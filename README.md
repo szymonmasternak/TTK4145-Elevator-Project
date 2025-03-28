@@ -1,3 +1,4 @@
+
 # TTK4145-Elevator-Project
 
 Group project for the NTNU TTK4145 Real-time Programming Module.
@@ -61,6 +62,7 @@ The structure of this project is as follows:
   - `elevstate`: Contains the elevator's state and FSM as well as corresponding tests.
   - `elevutils`: Provides functions that could not be placed elsewhere.
   - `logger`: Contains logging functionality and tests.
+  - `requesthandler`: Managing elevator requests
 
 ## Network functionality
 
@@ -72,7 +74,19 @@ The `elevnet` package implements a fully distributed peer-to-peer elevator netwo
 * Structured network messaging through clearly defined packet types
 * Periodic state broadcasts
 
-For more details, see [elevnet.go](./internal/elevnet/elevnet.go)
+For more details, see [elevnet.go](./internal/elevnet/elevnet.go).
+
+## Request Handler
+
+The `requesthandler` package is responsible for managing and distributing elevator requests across the network. It handles both confirmation logic and hall call assignment, ensuring consistency and optimal load distribution in multi-elevator systems.
+
+Features:
+
+* Request confirmation logic using consensus model
+* Peer synchronization
+* Hall request assignment through the given executable
+
+For more details see [requesthandler.go](./internal/requesthandler/requesthandler.go).
 
 ## Channels
 
