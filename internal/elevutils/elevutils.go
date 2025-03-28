@@ -22,10 +22,10 @@ func ProcessCmdArgs() (string, uint16, bool, string, uint16) {
 	help := flag.Bool("help", false, "Show Help Window")
 	version := flag.Bool("version", false, "Show Version")
 	identifier := flag.String("id", "", "Set the identifier of the elevator. Defaults to random string")
-	portNumber := flag.Uint64("port", 9999, "Set the port number that the elevator communicates on.")
+	portNumber := flag.Uint64("port", 9999, "Set the port number that the elevator uses for direct communication. Should be unique for each elevator.")
 	driverIPAddress := flag.String("driverip", "localhost:15657", "Set the IP address of the driver.")
 	clearUpDownOnArrival := flag.Bool("clearupdownonarrival", false, "Clear the Up and Down requests at floor arrival. Defaults to false")
-	udpPort := flag.Uint64("udpport", 53317, "Set the port number that the elevator communicates on.")
+	udpPort := flag.Uint64("udpport", 53317, "Set the port number that the elevators broadcasts heartbeat messages on. Should be the same for all elevators.")
 
 	flag.Parse()
 
