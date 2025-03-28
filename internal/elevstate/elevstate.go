@@ -304,7 +304,10 @@ func (es ElevatorState) CalculateTimeToServeReq(Floor int, Button elevconsts.But
 	}
 	var duration time.Duration
 	if es.Behaviour == elevconsts.DoorOpen {
-		duration += es.doorOpenDuration * 10 //Penalty to not assign orders to open doors :-)
+		duration += time.Hour //Penalty to not assign orders to open doors :-)
+	}
+	if es.stopButton {
+		duration += time.Hour * 100
 	}
 
 	switch esCopy.Behaviour {

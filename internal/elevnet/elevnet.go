@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sort"
 	"sync"
 	"time"
 
@@ -289,7 +290,9 @@ func (en *ElevatorNetwork) Start(ctx context.Context, wg *sync.WaitGroup) error 
 
 func (en *ElevatorNetwork) checkNodesTimeout() {
 	en.nodesMutex.Lock()
-	defer en.nodesMutex.Unlock()
+
+	var offlineNodes []*Node
+	var aliveNodes []string
 
 	for id, node := range en.nodes {
 		node.Mutex.Lock()
@@ -299,9 +302,52 @@ func (en *ElevatorNetwork) checkNodesTimeout() {
 			if node.Alive {
 				Logger.Warn().Msgf("Deleting Node %s after not responding for %v", id, timeSinceLastNodeHeartBeat)
 				node.Alive = false
+				offlineNodes = append(offlineNodes, node)
 			}
+		} else if node.Alive {
+			aliveNodes = append(aliveNodes, id)
 		}
 		node.Mutex.Unlock()
+	}
+
+	aliveNodes = append(aliveNodes, en.metaData.Identifier)
+	sort.Strings(aliveNodes)
+	en.nodesMutex.Unlock()
+
+	if len(offlineNodes) < 1 {
+		return
+	}
+
+	if aliveNodes[0] == en.metaData.Identifier {
+		Logger.Info().Msgf("We are taking over the hull requests from other nodes")
+		en.stealHallRequestsFromNodes(offlineNodes)
+	} else {
+		Logger.Info().Msgf("Node %s is taking over hull requests from other nodes", aliveNodes[0])
+		//We stay quiet
+	}
+}
+
+func (en *ElevatorNetwork) stealHallRequestsFromNodes(offlineNodes []*Node) {
+	for _, node := range offlineNodes {
+		node.Mutex.Lock()
+		nodeState := node.State
+		node.Mutex.Unlock()
+		for floor := 0; floor < elevconsts.N_FLOORS; floor++ {
+			for btnType := elevconsts.HallUp; btnType <= elevconsts.HallDown; btnType++ {
+				if nodeState.Requests[floor][btnType] != 0 {
+					Logger.Info().Msgf("Recovering hall call at floor %d, button %s from offline elevator %s", floor, btnType.String(), node.MetaData.Identifier)
+
+					en.eventChannel <- elevevent.ElevatorEvent{
+						Value: elevevent.NetworkButtonEvent{
+							Floor:  floor,
+							Button: elevconsts.Button(btnType),
+						},
+					}
+
+					time.Sleep(100 * time.Millisecond)
+				}
+			}
+		}
 	}
 }
 
@@ -510,14 +556,35 @@ func (en *ElevatorNetwork) sendWithRetry(data []byte, node *Node) bool {
 
 	en.nodesMutex.Lock()
 	node, ok := en.nodes[nodeID]
+
+	wasNodeAlive := false
 	if ok {
 		//If node is set to alive, then mark it as dead
 		node.Mutex.Lock()
+		wasNodeAlive = node.Alive
 		node.Alive = false
 		node.Mutex.Unlock()
 	}
+
+	var aliveNodes []string
+	for id, n := range en.nodes {
+		n.Mutex.Lock()
+		if n.Alive {
+			aliveNodes = append(aliveNodes, id)
+		}
+		n.Mutex.Unlock()
+	}
+	aliveNodes = append(aliveNodes, en.metaData.Identifier)
+	sort.Strings(aliveNodes)
 	en.nodesMutex.Unlock()
 
+	if wasNodeAlive && aliveNodes[0] == en.metaData.Identifier {
+		go func() {
+			nodeList := make([]*Node, 0, 1)
+			nodeList = append(nodeList, node)
+			en.stealHallRequestsFromNodes(nodeList)
+		}()
+	}
 	return false
 }
 
