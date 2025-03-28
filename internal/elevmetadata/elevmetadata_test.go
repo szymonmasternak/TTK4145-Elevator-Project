@@ -8,9 +8,10 @@ func TestString(t *testing.T) {
 		IpAddress:       "0.0.0.0",
 		PortNumber:      9999,
 		Identifier:      "uwvvblrtct",
+		UdpPort:         1000,
 	}
 
-	jsonString := "{\"software_version\":\"smj2acjkvv4h1zkwjz2ocsn2lkfrjmzf9qn4i2m3\",\"ip_address\":\"0.0.0.0\",\"port_number\":9999,\"identifier\":\"uwvvblrtct\"}"
+	jsonString := "{\"software_version\":\"smj2acjkvv4h1zkwjz2ocsn2lkfrjmzf9qn4i2m3\",\"ip_address\":\"0.0.0.0\",\"port_number\":9999,\"identifier\":\"uwvvblrtct\",\"udp_port\":1000}"
 
 	if metadata.String() != jsonString {
 		t.Errorf("String() = %s, expected %s", metadata.String(), jsonString)
@@ -23,6 +24,7 @@ func TestGetIPAddressPort(t *testing.T) {
 		IpAddress:       "0.0.0.0",
 		PortNumber:      9999,
 		Identifier:      "uwvvblrtct",
+		UdpPort:         1000,
 	}
 
 	if metadata.GetIPAddressPort() != "0.0.0.0:9999" {
