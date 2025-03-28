@@ -105,7 +105,6 @@ func (e *Elevator) Start() {
 	e.IO.Start(ctxIO, wgIO)
 	e.cancelArray = append(e.cancelArray, cancelIO)
 
-	//Launch Threads One by One
 	ctxState, cancelState := context.WithCancel(context.Background())
 	wgState := &sync.WaitGroup{}
 	e.waitGroupArray = append(e.waitGroupArray, wgState)

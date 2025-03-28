@@ -1,4 +1,5 @@
 # TTK4145-Elevator-Project
+
 Group project for the NTNU TTK4145 Real-time Programming Module
 
 ## How to Run the Project
@@ -37,25 +38,37 @@ This will generate the corresponding binaries in the `build/` folder where they 
 
 One can read more about this in the following [webpage](https://tip.golang.org/wiki/WindowsCrossCompiling#go-version--15) or this [webpage](https://gist.github.com/asukakenji/f15ba7e588ac42795f421b48b8aede63).
 
-# Project Structure
+## Project Structure
 
 The structure of this project is as follows:
 
-- `.github/workflows/*.yaml` contains CI/CD pipeline for the project 
+- `.github/workflows/*.yaml` contains CI/CD pipeline for the project
 - `Makefile` encompasses the build process
 - `build/` directory encompasses binaries built during the build process
 - `cmd/` houses the `main.go` files for different binaries.
 - `internal/` directory contains different modules such as;
-    - `elevator`: contains the root struct of the elevator and associated functions
-    - `elevcmd`: Defines the elevator `command` type
-    - `elevconsts`: Holds constant definitions used throughout the project
-    - `elevevent`: Defines `event` type
-    - `elevio`: Handles input/output interfaces with actual elevator (hardware I/O via `eleviodriver.go`).
-    - `elevmetadata`: Contains metadata struct information for the elevator.
-    - `elevnet`: Contains network functionality (broadcast, listen, etc.) with tests.
-    - `elevstate`: Contains the elevator's state and FSM as well as corresponding tests.
-    - `elevutils`: Provides functions that could not be placed elsewhere.
-    - `logger`: Contains logging functionality and tests.
+  - `elevator`: contains the root struct of the elevator and associated functions
+  - `elevcmd`: Defines the elevator `command` type
+  - `elevconsts`: Holds constant definitions used throughout the project
+  - `elevevent`: Defines `event` type
+  - `elevio`: Handles input/output interfaces with actual elevator (hardware I/O via `eleviodriver.go`).
+  - `elevmetadata`: Contains metadata struct information for the elevator.
+  - `elevnet`: Contains network functionality (broadcast, listen, etc.) with tests.
+  - `elevstate`: Contains the elevator's state and FSM as well as corresponding tests.
+  - `elevutils`: Provides functions that could not be placed elsewhere.
+  - `logger`: Contains logging functionality and tests.
+
+## Network functionality
+
+The `elevnet` package implements a fully distributed peer-to-peer elevator network with UDP based message transmission. It's main features are as follows:
+
+* Reliable UDP communication with acknowledgement and retry logic
+* Peer discovery and heartbeat system
+* Elevator monitoring and failure detection
+* Structured network messaging through clearly defined packet types
+* Periodic state broadcasts
+
+For more details, see [elevnet.go](./internal/elevnet/elevnet.go)
 
 ## Channels
 
