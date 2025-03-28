@@ -1,5 +1,7 @@
 package elevconsts
 
+import "time"
+
 const (
 	N_FLOORS  = 4
 	N_BUTTONS = 3
@@ -73,4 +75,18 @@ type ClearRequestVariant int
 const (
 	All ClearRequestVariant = iota
 	InDirn
+)
+
+type ElevatorStateNetMsg struct {
+	//variables from state->network
+	Floor          int
+	Button         Button
+	TimeoutOccured bool //false by default
+
+	//variables from network->state
+	ShouldDoRequest bool
+}
+
+const (
+	ELEVATOR_TRAVEL_DURATION = 2500 * time.Millisecond
 )

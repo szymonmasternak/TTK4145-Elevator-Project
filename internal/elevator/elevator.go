@@ -36,7 +36,6 @@ type Elevator struct {
 
 	eventChannel   chan elevevent.ElevatorEvent
 	commandChannel chan elevcmd.ElevatorCommand
-	// networkMsgChannel chan elevnet.NetworkMsg
 
 	initialised bool //set to true if initialised via NewElevator Function
 	running     bool
@@ -62,18 +61,18 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 
 	eventChannel := make(chan elevevent.ElevatorEvent, EVENT_CHANNEL_SIZE)
 	commandChannel := make(chan elevcmd.ElevatorCommand, COMMAND_CHANNEL_SIZE)
-	// networkMsgChannel := make(chan elevnet.NetworkMsg, NETWORK_MSG_CHANNEL_SIZE)
 
 	elevIO, err := elevio.NewElevatorIO(driverIPAddress, elevconsts.N_FLOORS, eventChannel, commandChannel)
 	if err != nil {
 		panic("Error Creating ElevIO Object")
 	}
 
-	// elevState := elevstate.NewElevatorState(eventChannel, commandChannel, networkMsgChannel, clearUpDownOnArrival)
-	// elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, networkMsgChannel, elevState)
+	//TODO Fix this
+	stateNetChannel := make(chan elevconsts.ElevatorStateNetMsg, 1)
 
-	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
-	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState)
+	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
+	time.Sleep(3000 * time.Millisecond)
+	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, stateNetChannel, eventChannel)
 
 	return &Elevator{
 		MetaData:       elevatorMetadata,
@@ -84,7 +83,6 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 		running:        false,
 		eventChannel:   eventChannel,
 		commandChannel: commandChannel,
-		// networkMsgChannel: networkMsgChannel,
 	}
 }
 

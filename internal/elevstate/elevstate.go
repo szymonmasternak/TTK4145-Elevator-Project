@@ -29,11 +29,11 @@ type ElevatorState struct {
 	doorOpenTime        time.Time
 	eventChannel        <-chan elevevent.ElevatorEvent
 	commandChannel      chan<- elevcmd.ElevatorCommand
-	// networkMsgChannel   chan<- elevnet.NetworkMsg
+
+	stateNetChannel chan elevconsts.ElevatorStateNetMsg
 }
 
-// func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, networkMsgChannel <-chan elevnet.NetworkMsg, clearUpDownOnArrival bool) *ElevatorState {
-func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool) *ElevatorState {
+func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, stateNetChannel chan elevconsts.ElevatorStateNetMsg) *ElevatorState {
 
 	clearRequestVariant := elevconsts.InDirn
 	if clearUpDownOnArrival {
@@ -51,7 +51,8 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 		stopButton:          false,
 		obstructionSensor:   false,
 		doorOpenTime:        time.Time{}, //Returns zero value, since we dont know when it was last open
-		// networkMsgChannel:   networkMsgChannel,
+
+		stateNetChannel: stateNetChannel,
 	}
 	return elevatorState
 }
@@ -99,7 +100,7 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 					es.handleFloorArrival(evnt.Floor)
 				case elevevent.ButtonPressEvent:
 					Log.Info().Msgf("Button Has Been Pressed (%d, %s)", evnt.Button, evnt.Button.String())
-					es.handleButtonPress(evnt.Floor, evnt.Button)
+					es.handleButtonPress(evnt.Floor, evnt.Button, false)
 				case elevevent.StopButtonEvent:
 					Log.Info().Msgf("Stop Button is %v", evnt.Value)
 					es.handleStopButton(evnt.Value)
@@ -108,6 +109,9 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 					es.handleObstruction(evnt.Value)
 				case elevevent.RequestFloorEvent:
 					Log.Error().Msgf("RequestFloorEvent should not occur")
+				case elevevent.NetworkButtonEvent:
+					Log.Info().Msgf("Network Button Pressed (%d, %s)", evnt.Floor, evnt.Button.String())
+					es.handleButtonPress(evnt.Floor, evnt.Button, true)
 				}
 			default:
 				if time.Now().After(es.doorOpenTime.Add(es.doorOpenDuration)) {
@@ -171,10 +175,29 @@ func (es *ElevatorState) setAllLightsSequence() {
 	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.ButtonLightArrayCommand{Array: buttonArray}}
 }
 
-func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Button) {
+func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Button, fromNetwork bool) {
 	if es.stopButton {
 		Log.Warn().Msgf("Stop Button Pressed, not responding to button presses")
 		return
+	}
+
+	if !fromNetwork {
+		if btnType == elevconsts.HallDown || btnType == elevconsts.HallUp {
+			es.stateNetChannel <- elevconsts.ElevatorStateNetMsg{Floor: btnFloor, Button: btnType, TimeoutOccured: false}
+
+			select {
+			case msg := <-es.stateNetChannel:
+				if !msg.ShouldDoRequest {
+					Log.Warn().Msgf("Network Module decided that the button should be sent to the network")
+					return
+				} else {
+					Log.Warn().Msgf("Network Module decided that the button should be served locally")
+				}
+			case <-time.After(time.Second): //TODO fix
+				Log.Warn().Msgf("Timeout, network module timeout, continuing to serve locally")
+				es.stateNetChannel <- elevconsts.ElevatorStateNetMsg{Floor: btnFloor, Button: btnType, TimeoutOccured: true}
+			}
+		}
 	}
 
 	switch es.Behaviour {
@@ -257,4 +280,15 @@ func (es *ElevatorState) handleStopButton(stopButtonState bool) {
 
 func (es *ElevatorState) handleObstruction(obstructionState bool) {
 	es.obstructionSensor = obstructionState
+}
+
+func AbsUint(n int) uint {
+	if n < 0 {
+		return uint(-n)
+	}
+	return uint(n)
+}
+
+func (es ElevatorState) CalculateTimeToServeReq(Floor int, Button elevconsts.Button) time.Duration {
+	return time.Millisecond * time.Duration(AbsUint(Floor-es.Floor))
 }

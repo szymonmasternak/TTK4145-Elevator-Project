@@ -36,6 +36,11 @@ type RequestFloorEvent struct {
 	Floor int
 }
 
+type NetworkButtonEvent struct {
+	Floor  int
+	Button elevconsts.Button
+}
+
 func (e *ElevatorEvent) EventType() string {
 	switch e.Value.(type) {
 	case ButtonPressEvent:
@@ -48,6 +53,8 @@ func (e *ElevatorEvent) EventType() string {
 		return "ObstructionEvent"
 	case RequestFloorEvent:
 		return "RequestFloorEvent"
+	case NetworkButtonEvent:
+		return "NetworkButtonEvent"
 	default:
 		return "UnknownEvent"
 	}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevevent"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevmetadata"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
@@ -25,7 +26,10 @@ const (
 	PACKET_TYPE_HEARTBEAT NetworkPacketType = iota
 	PACKET_TYPE_STATE
 	PACKET_TYPE_BUTTON
-	PACKET_TYPE_ACK // Simple acknowledgment
+	PACKET_TYPE_ACK
+	PACKET_TYPE_COST_REQ
+	PACKET_TYPE_COST_RESP
+	PACKET_TYPE_DO_REQ
 )
 
 type NetworkPacket struct {
@@ -54,6 +58,27 @@ type AckPacket struct {
 	MessageHash string `json:"message_hash"` // Hash of the original message
 }
 
+type CostRequestPacket struct {
+	NetworkPacket
+	Floor                int               `json:"floor"`
+	Button               elevconsts.Button `json:"button"`
+	CalculationRequestID string            `json:"calculation_request_id"`
+}
+
+type CostResponsePacket struct {
+	NetworkPacket
+	Floor                int               `json:"floor"`
+	Button               elevconsts.Button `json:"button"`
+	Cost                 time.Duration     `json:"cost"`
+	CalculationRequestID string            `json:"calculation_request_id"`
+}
+
+type DoRequestPacket struct {
+	NetworkPacket
+	Floor  int               `json:"floor"`
+	Button elevconsts.Button `json:"cost"`
+}
+
 // From here is all the network stuff
 
 const (
@@ -76,6 +101,16 @@ type Node struct {
 	Mutex             sync.Mutex
 }
 
+type CostCalculation struct {
+	RequestID   string
+	Floor       int
+	Button      elevconsts.Button
+	Responses   map[string]time.Duration
+	StartTime   time.Time
+	Timeout     time.Time
+	FromNetwork bool
+}
+
 type ElevatorNetwork struct {
 	metaData *elevmetadata.ElevMetaData
 
@@ -92,15 +127,24 @@ type ElevatorNetwork struct {
 
 	receiveChannel chan AckPacket
 	initialised    bool
+
+	stateNetChannel chan elevconsts.ElevatorStateNetMsg
+
+	costRespChannel chan CostResponsePacket
+
+	eventChannel chan elevevent.ElevatorEvent
 }
 
-func NewElevatorNetwork(metaData *elevmetadata.ElevMetaData, state *elevstate.ElevatorState) *ElevatorNetwork {
+func NewElevatorNetwork(metaData *elevmetadata.ElevMetaData, state *elevstate.ElevatorState, stateNetChannel chan elevconsts.ElevatorStateNetMsg, eventChannel chan elevevent.ElevatorEvent) *ElevatorNetwork {
 	return &ElevatorNetwork{
-		metaData:       metaData,
-		nodes:          make(map[string]*Node, 10), //TODO: Remove magic Number
-		localState:     state,
-		receiveChannel: make(chan AckPacket, 10), //TODO: Remove magic Number
-		initialised:    true,
+		metaData:        metaData,
+		nodes:           make(map[string]*Node, 10), //TODO: Remove magic Number
+		localState:      state,
+		receiveChannel:  make(chan AckPacket, 10), //TODO: Remove magic Number
+		initialised:     true,
+		stateNetChannel: stateNetChannel,
+		eventChannel:    eventChannel,
+		costRespChannel: make(chan CostResponsePacket, 10), //TODO: Remove magic Number
 	}
 }
 
@@ -133,7 +177,7 @@ func (en *ElevatorNetwork) Start(ctx context.Context, wg *sync.WaitGroup) error 
 		return fmt.Errorf("error setting up direct communication socket: %v", err)
 	}
 
-	wg.Add(4)
+	wg.Add(5)
 	//Heartbeat Broadcast
 	go func() {
 		defer wg.Done()
@@ -201,8 +245,8 @@ func (en *ElevatorNetwork) Start(ctx context.Context, wg *sync.WaitGroup) error 
 	//Check Nodes & Send State Updates
 	go func() {
 		defer wg.Done()
-		tickerCheckNodes := time.NewTicker(CHECK_NODES_INTERVAL)
-		defer tickerCheckNodes.Stop()
+		tickerCheckNodesTimeout := time.NewTicker(CHECK_NODES_INTERVAL)
+		defer tickerCheckNodesTimeout.Stop()
 		tickerSendStates := time.NewTicker(SEND_STATE_INTERVAL)
 		defer tickerSendStates.Stop()
 
@@ -210,15 +254,55 @@ func (en *ElevatorNetwork) Start(ctx context.Context, wg *sync.WaitGroup) error 
 			select {
 			case <-ctx.Done():
 				return
-			case <-tickerCheckNodes.C:
-				en.checkNodes()
+			case <-tickerCheckNodesTimeout.C:
+				en.checkNodesTimeout()
 			case <-tickerSendStates.C:
 				en.sendState()
 			}
 		}
 	}()
 
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg := <-en.stateNetChannel:
+				if msg.TimeoutOccured {
+					continue
+				}
+
+				shouldHandleLocally := en.processHallButtonRequest(msg.Floor, msg.Button)
+
+				en.stateNetChannel <- elevconsts.ElevatorStateNetMsg{
+					Floor:           msg.Floor,
+					Button:          msg.Button,
+					ShouldDoRequest: shouldHandleLocally,
+				}
+			}
+		}
+	}()
+
 	return nil
+}
+
+func (en *ElevatorNetwork) checkNodesTimeout() {
+	en.nodesMutex.Lock()
+	defer en.nodesMutex.Unlock()
+
+	for id, node := range en.nodes {
+		node.Mutex.Lock()
+		timeSinceLastNodeHeartBeat := time.Since(node.LastHeartbeatTime)
+
+		if timeSinceLastNodeHeartBeat > NODE_TIMEOUT {
+			if node.Alive {
+				Logger.Warn().Msgf("Deleting Node %s after not responding for %v", id, timeSinceLastNodeHeartBeat)
+				node.Alive = false
+			}
+		}
+		node.Mutex.Unlock()
+	}
 }
 
 func (en *ElevatorNetwork) calculateHash(data []byte) string {
@@ -280,7 +364,7 @@ func (en *ElevatorNetwork) handleDirectMessage(data []byte, address *net.UDPAddr
 			return
 		}
 		en.sendAcknowledgement(packetHash, packet.MetaData.Identifier, address)
-		en.handleButtonPacket(buttonPacket)
+		// en.handleButtonPacket(buttonPacket)
 
 	case PACKET_TYPE_ACK:
 		var ackPacket AckPacket
@@ -295,6 +379,34 @@ func (en *ElevatorNetwork) handleDirectMessage(data []byte, address *net.UDPAddr
 		default:
 			Logger.Error().Msg("FIX THIS SHOULD NEVER HAPPEN")
 		}
+	case PACKET_TYPE_COST_REQ:
+		var costReqPacket CostRequestPacket
+		if err := json.Unmarshal(data, &costReqPacket); err != nil {
+			Logger.Error().Msgf("Failed to unmarshal ACK packet: %v", err)
+			return
+		}
+		en.sendAcknowledgement(packetHash, packet.MetaData.Identifier, address)
+		// en.handleCostReqPacket(costReqPacket)
+
+	case PACKET_TYPE_COST_RESP:
+		var costRespPacket CostResponsePacket
+		if err := json.Unmarshal(data, &costRespPacket); err != nil {
+			Logger.Error().Msgf("Failed to unmarshal ACK packet: %v", err)
+			return
+		}
+		select {
+		case en.costRespChannel <- costRespPacket:
+		default:
+			Logger.Error().Msg("FIX THIS SHOULD NEVER HAPPEN")
+		}
+	case PACKET_TYPE_DO_REQ:
+		var doReqPacket DoRequestPacket
+		if err := json.Unmarshal(data, &doReqPacket); err != nil {
+			Logger.Error().Msgf("Failed to unmarshal ACK packet: %v", err)
+			return
+		}
+		en.sendAcknowledgement(packetHash, packet.MetaData.Identifier, address)
+		en.handleDoReq(doReqPacket)
 	default:
 		Logger.Warn().Msgf("Received unknown packet type: %v", packet.PacketType)
 	}
@@ -451,10 +563,6 @@ func (en *ElevatorNetwork) sendState() {
 	}
 }
 
-func (en *ElevatorNetwork) handleButtonPacket(packet ButtonPacket) {
-	Logger.Error().Msgf("Un implemented TODO function")
-}
-
 func (en *ElevatorNetwork) handleStatePacket(packet StatePacket) {
 	Logger.Info().Msgf("Received state update from %s", packet.MetaData.Identifier)
 
@@ -474,28 +582,6 @@ func (en *ElevatorNetwork) handleStatePacket(packet StatePacket) {
 	Logger.Error().Msgf("Received state from unknown node: %s", packet.MetaData.Identifier)
 }
 
-func (en *ElevatorNetwork) checkNodes() {
-	en.nodesMutex.Lock()
-	defer en.nodesMutex.Unlock()
-
-	for id, node := range en.nodes {
-		node.Mutex.Lock()
-		timeSinceLastNodeHeartBeat := time.Since(node.LastHeartbeatTime)
-
-		if timeSinceLastNodeHeartBeat > NODE_TIMEOUT {
-			if node.Alive {
-				Logger.Warn().Msgf("Deleting Node %s after not responding for %v", id, timeSinceLastNodeHeartBeat)
-				node.Alive = false
-			}
-		}
-		node.Mutex.Unlock()
-	}
-}
-
-func (en *ElevatorNetwork) GetNodeStates() map[string]*Node {
-	return en.nodes
-}
-
 func (en *ElevatorNetwork) GetNodesConnected() int {
 	en.nodesMutex.Lock()
 	defer en.nodesMutex.Unlock()
@@ -511,4 +597,55 @@ func (en *ElevatorNetwork) GetNodesConnected() int {
 	}
 
 	return counter
+}
+
+func (en *ElevatorNetwork) processHallButtonRequest(floor int, button elevconsts.Button) bool {
+	en.statePointer.Lock()
+	localCost := en.localState.CalculateTimeToServeReq(floor, button)
+	en.statePointer.Unlock()
+
+	bestCost := localCost
+	bestElevator := en.metaData.Identifier
+
+	en.nodesMutex.Lock()
+	for id, node := range en.nodes {
+		node.Mutex.Lock()
+		if node.Alive {
+			nodeCost := node.State.CalculateTimeToServeReq(floor, button)
+
+			if nodeCost < bestCost {
+				bestCost = nodeCost
+				bestElevator = id
+			}
+		}
+		node.Mutex.Unlock()
+	}
+	en.nodesMutex.Unlock()
+
+	if bestElevator != en.metaData.Identifier {
+		node, exists := en.nodes[bestElevator]
+		if exists {
+			doReq := DoRequestPacket{
+				NetworkPacket: NetworkPacket{
+					PacketType: PACKET_TYPE_DO_REQ,
+					MetaData:   *en.metaData,
+					Time:       time.Now(),
+				},
+				Floor:  floor,
+				Button: button,
+			}
+			data, err := json.Marshal(doReq)
+			if err != nil {
+				Logger.Error().Msgf("Failed to serialise do request: %v", err)
+			}
+			go en.sendWithRetry(data, node)
+			return false
+		}
+	}
+	return true
+}
+
+func (en *ElevatorNetwork) handleDoReq(packet DoRequestPacket) {
+	Logger.Info().Msgf("Received request to handle hall button at floor %d, button %s", packet.Floor, packet.Button.String())
+	en.eventChannel <- elevevent.ElevatorEvent{Value: elevevent.NetworkButtonEvent{Floor: packet.Floor, Button: packet.Button}}
 }

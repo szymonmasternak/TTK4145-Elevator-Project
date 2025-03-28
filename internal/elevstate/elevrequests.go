@@ -1,6 +1,8 @@
 package elevstate
 
-import "github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
+import (
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
+)
 
 func (es *ElevatorState) requestsAbove() bool {
 	for f := es.Floor + 1; f < elevconsts.N_FLOORS; f++ {
@@ -119,6 +121,18 @@ func (es *ElevatorState) RequestsClearAtCurrentFloor() {
 		case elevconsts.Stop:
 			es.Requests[es.Floor][elevconsts.HallUp] = 0
 			es.Requests[es.Floor][elevconsts.HallDown] = 0
+		}
+	}
+}
+
+func (es ElevatorState) RequestsClearAtCurrentFloorErrorCheck(onClearedRequest func(floor int, btn elevconsts.Button)) {
+	eOld := es
+	for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
+		if eOld.Requests[eOld.Floor][btn] == 1 {
+			eOld.Requests[eOld.Floor][btn] = 0
+			if onClearedRequest != nil {
+				onClearedRequest(eOld.Floor, elevconsts.Button(btn))
+			}
 		}
 	}
 }
