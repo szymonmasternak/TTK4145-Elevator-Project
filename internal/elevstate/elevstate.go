@@ -282,13 +282,6 @@ func (es *ElevatorState) handleObstruction(obstructionState bool) {
 	es.obstructionSensor = obstructionState
 }
 
-func AbsUint(n int) uint {
-	if n < 0 {
-		return uint(-n)
-	}
-	return uint(n)
-}
-
 func (es ElevatorState) CalculateTimeToServeReq(Floor int, Button elevconsts.Button) time.Duration {
 	if Floor < 0 || Button > elevconsts.N_BUTTONS {
 		Log.Error().Msgf("Floor or Button out of range")
@@ -338,5 +331,4 @@ func (es ElevatorState) CalculateTimeToServeReq(Floor int, Button elevconsts.But
 		duration += elevconsts.ELEVATOR_TRAVEL_DURATION
 	}
 	return duration
-
 }
