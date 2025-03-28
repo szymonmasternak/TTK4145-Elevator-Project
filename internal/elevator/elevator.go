@@ -3,7 +3,6 @@ package elevator
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
@@ -13,6 +12,7 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevnet"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevutils"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requesthandler"
 
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstate"
 
@@ -29,10 +29,11 @@ const (
 )
 
 type Elevator struct {
-	MetaData *elevmetadata.ElevMetaData //this contains all elevator constant metadata
-	Network  *elevnet.ElevatorNetwork
-	IO       *elevio.ElevatorIO
-	State    *elevstate.ElevatorState
+	MetaData       *elevmetadata.ElevMetaData //this contains all elevator constant metadata
+	Network        *elevnet.ElevatorNetwork
+	IO             *elevio.ElevatorIO
+	State          *elevstate.ElevatorState
+	RequestHandler *requesthandler.RequestHandler
 
 	eventChannel   chan elevevent.ElevatorEvent
 	commandChannel chan elevcmd.ElevatorCommand
@@ -62,6 +63,9 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 
 	eventChannel := make(chan elevevent.ElevatorEvent, EVENT_CHANNEL_SIZE)
 	commandChannel := make(chan elevcmd.ElevatorCommand, COMMAND_CHANNEL_SIZE)
+	updateReqCh := make(chan elevconsts.RequestMessage, COMMAND_CHANNEL_SIZE)
+	inboundReqArrayChannel := make(chan elevconsts.RequestArrayMessage, 10)
+	outboundReqArrayChannel := make(chan elevconsts.RequestArrayMessage, 10)
 	// networkMsgChannel := make(chan elevnet.NetworkMsg, NETWORK_MSG_CHANNEL_SIZE)
 
 	elevIO, err := elevio.NewElevatorIO(driverIPAddress, elevconsts.N_FLOORS, eventChannel, commandChannel)
@@ -72,14 +76,16 @@ func NewElevator(identifier string, portNumber uint16, driverIPAddress string, c
 	// elevState := elevstate.NewElevatorState(eventChannel, commandChannel, networkMsgChannel, clearUpDownOnArrival)
 	// elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, networkMsgChannel, elevState)
 
-	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
-	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState)
+	elevState := elevstate.NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, updateReqCh)
+	elevNetwork := elevnet.NewElevatorNetwork(elevatorMetadata, elevState, outboundReqArrayChannel, inboundReqArrayChannel)
+	reqHandler := requesthandler.NewRequestHandler(identifier, updateReqCh, inboundReqArrayChannel, outboundReqArrayChannel, elevNetwork, eventChannel)
 
 	return &Elevator{
 		MetaData:       elevatorMetadata,
 		Network:        elevNetwork,
 		IO:             elevIO,
 		State:          elevState,
+		RequestHandler: reqHandler,
 		initialised:    true,
 		running:        false,
 		eventChannel:   eventChannel,
@@ -118,14 +124,20 @@ func (e *Elevator) Start() {
 	e.Network.Start(ctxNetwork, wgNetwork)
 	e.cancelArray = append(e.cancelArray, cancelNetwork)
 
-	//For Debug
-	go func() {
-		for {
-			time.Sleep(time.Second)
-			num := e.Network.GetNodesConnected()
-			Logger.Info().Msgf("Elevators Connected: %d", num)
-		}
-	}()
+	ctxRequestHandler, cancelRequestHandler := context.WithCancel(context.Background())
+	wgRequestHandler := &sync.WaitGroup{}
+	e.waitGroupArray = append(e.waitGroupArray, wgRequestHandler)
+	e.RequestHandler.Start(ctxRequestHandler, wgRequestHandler)
+	e.cancelArray = append(e.cancelArray, cancelRequestHandler)
+
+	// //For Debug
+	// go func() {
+	// 	for {
+	// 		time.Sleep(time.Second)
+	// 		num := e.Network.GetNodesConnected()
+	// 		//Logger.Info().Msgf("Elevators Connected: %d", num)
+	// 	}
+	// }()
 
 	//Todo add other threads
 

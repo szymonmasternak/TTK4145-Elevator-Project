@@ -136,8 +136,8 @@ func TestNewElevatorStateCommands(t *testing.T) {
 		for btn := 0; btn < elevconsts.N_BUTTONS; btn++ {
 			eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floor, Button: elevconsts.Button(btn)}}
 			time.Sleep(TEST_DELAY)
-			if elevState.Requests[floor][btn] != 1 {
-				t.Errorf("Expected request for floor %v and button %v to be 1, got %v", floor, btn, elevState.Requests[floor][btn])
+			if elevState.ConfirmedRequests[floor][btn] != 1 {
+				t.Errorf("Expected request for floor %v and button %v to be 1, got %v", floor, btn, elevState.ConfirmedRequests[floor][btn])
 			}
 		}
 	}
@@ -429,7 +429,7 @@ func TestCabCall(t *testing.T) {
 	// Simulate cab call for floor 3.
 	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest, Button: elevconsts.Cab}}
 	time.Sleep(TEST_DELAY)
-	if elevState.Requests[floorButtonRequest][elevconsts.Cab] != 1 {
+	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.Cab] != 1 {
 		t.Errorf("Expected cab call for floor %v to be registered", floorButtonRequest)
 	}
 
@@ -450,8 +450,8 @@ func TestCabCall(t *testing.T) {
 
 	// Wait for door to close
 	time.Sleep(elevState.doorOpenDuration + TEST_DELAY)
-	if elevState.Requests[floorButtonRequest][elevconsts.Cab] != 0 {
-		t.Errorf("Expected cab call for floor %v to be cleared after arrival; got %v", floorButtonRequest, elevState.Requests[floorButtonRequest][elevconsts.Cab])
+	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.Cab] != 0 {
+		t.Errorf("Expected cab call for floor %v to be cleared after arrival; got %v", floorButtonRequest, elevState.ConfirmedRequests[floorButtonRequest][elevconsts.Cab])
 	}
 }
 
@@ -496,7 +496,7 @@ func TestHallCall(t *testing.T) {
 	// Simulate hall call
 	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest, Button: elevconsts.HallUp}}
 	time.Sleep(TEST_DELAY)
-	if elevState.Requests[floorButtonRequest][elevconsts.HallUp] != 1 {
+	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.HallUp] != 1 {
 		t.Errorf("Expected hall call for floor %v (HallUp) to be registered in state", floorButtonRequest)
 	}
 
@@ -512,7 +512,7 @@ func TestHallCall(t *testing.T) {
 
 	// Wait for door open duration plus a buffer and verify the hall call is cleared.
 	time.Sleep(elevState.doorOpenDuration + TEST_DELAY)
-	if elevState.Requests[floorButtonRequest][elevconsts.HallUp] != 0 {
+	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.HallUp] != 0 {
 		t.Errorf("Expected hall call for floor %v to be cleared", floorButtonRequest)
 	}
 }
@@ -559,7 +559,7 @@ func TestFullJourney(t *testing.T) {
 	// hall call down
 	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest, Button: elevconsts.HallDown}}
 	time.Sleep(TEST_DELAY)
-	if elevState.Requests[floorButtonRequest][elevconsts.HallDown] != 1 {
+	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.HallDown] != 1 {
 		t.Errorf("Expected hall call for floor %v (HallDown)", floorButtonRequest)
 	}
 
@@ -573,7 +573,7 @@ func TestFullJourney(t *testing.T) {
 		{Value: elevcmd.MotorDirCommand{Dir: elevconsts.Stop}},
 		{Value: elevcmd.DoorOpenCommand{}},
 	})
-	if elevState.Requests[floorButtonRequest][elevconsts.HallDown] != 0 {
+	if elevState.ConfirmedRequests[floorButtonRequest][elevconsts.HallDown] != 0 {
 		t.Errorf("Expected hall call for floor %v to be cleared", floorButtonRequest)
 	}
 	doorCloseCmds := waitForCommands(commandChannel, elevState.doorOpenDuration+TEST_DELAY)
@@ -584,7 +584,7 @@ func TestFullJourney(t *testing.T) {
 	// cab call for floor 3
 	eventChannel <- elevevent.ElevatorEvent{Value: elevevent.ButtonPressEvent{Floor: floorButtonRequest2, Button: elevconsts.Cab}}
 	time.Sleep(TEST_DELAY)
-	if elevState.Requests[floorButtonRequest2][elevconsts.Cab] != 1 {
+	if elevState.ConfirmedRequests[floorButtonRequest2][elevconsts.Cab] != 1 {
 		t.Errorf("Expected cab call for floor %v to be registered", floorButtonRequest2)
 	}
 	UpMotorDirectionCmd := waitForCommands(commandChannel, TEST_DELAY)
@@ -602,7 +602,7 @@ func TestFullJourney(t *testing.T) {
 		{Value: elevcmd.DoorOpenCommand{}},
 	})
 	time.Sleep(elevState.doorOpenDuration + TEST_DELAY)
-	if elevState.Requests[floorButtonRequest2][elevconsts.Cab] != 0 {
+	if elevState.ConfirmedRequests[floorButtonRequest2][elevconsts.Cab] != 0 {
 		t.Errorf("Expected cab call for floor %v to be cleared", floorButtonRequest2)
 	}
 	if elevState.Floor != floorButtonRequest2 {

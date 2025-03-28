@@ -10,11 +10,11 @@ type Dirn int
 func (d Dirn) String() string {
 	switch d {
 	case Up:
-		return "Up"
+		return "up"
 	case Down:
-		return "Down"
+		return "down"
 	case Stop:
-		return "Stop"
+		return "stop"
 	default:
 		return "Undefined"
 	}
@@ -58,11 +58,11 @@ const (
 func (eb ElevatorBehaviour) String() string {
 	switch eb {
 	case Idle:
-		return "EB_Idle"
+		return "idle"
 	case DoorOpen:
-		return "EB_DoorOpen"
+		return "doorOpen"
 	case Moving:
-		return "EB_Moving"
+		return "moving"
 	default:
 		return "EB_UNDEFINED"
 	}
@@ -74,3 +74,39 @@ const (
 	All ClearRequestVariant = iota
 	InDirn
 )
+
+// RequestState represents the state of a request.
+type RequestState int
+
+const (
+	REQ_Initial     RequestState = -1
+	REQ_None        RequestState = 0
+	REQ_Unconfirmed RequestState = 1
+	REQ_Confirmed   RequestState = 2
+	REQ_Completed   RequestState = 3
+)
+
+// Request holds the state and list of nodes that have confirmed the request.
+type Request struct {
+	State          RequestState `json:"state"`
+	ConsensusPeers []string     `json:"consensus"`
+}
+
+// RequestArray is a two-dimensional array of requests.
+type RequestArray [N_FLOORS][N_BUTTONS]Request
+
+// RequestConfirmationMap maps a node identifier to its RequestArray.
+type RequestConfirmationMap map[string]RequestArray
+
+// RequestMessage is used for local button press or state changes.
+type RequestMessage struct {
+	Floor  int
+	Button Button
+	State  RequestState
+}
+
+// RequestArrayMessage is used to exchange the entire RequestArray between nodes.
+type RequestArrayMessage struct {
+	Identifier   string       `json:"id"`
+	RequestArray RequestArray `json:"reqArray"`
+}

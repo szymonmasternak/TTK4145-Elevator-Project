@@ -26,6 +26,7 @@ const (
 	PACKET_TYPE_STATE
 	PACKET_TYPE_BUTTON
 	PACKET_TYPE_ACK // Simple acknowledgment
+	PACKET_TYPE_REQUEST_ARRAY
 )
 
 type NetworkPacket struct {
@@ -53,6 +54,10 @@ type AckPacket struct {
 	NetworkPacket
 	MessageHash string `json:"message_hash"` // Hash of the original message
 }
+type RequestArrayPacket struct {
+	NetworkPacket
+	Request elevconsts.RequestArrayMessage `json:"request"`
+}
 
 // From here is all the network stuff
 
@@ -62,7 +67,7 @@ const (
 	CHECK_NODES_INTERVAL    = 1 * time.Second
 	NODE_TIMEOUT            = 3 * time.Second
 	ACKNOWLEDGEMENT_TIMEOUT = 200 * time.Millisecond
-	MAX_RETRIES             = 3
+	MAX_RETRIES             = 5
 	BROADCAST_RX_ADDRESS    = "224.0.0.1" //https://gist.github.com/fiorix/9664255
 	BROADCAST_TX_ADDRESS    = "255.255.255.255"
 )
@@ -90,17 +95,21 @@ type ElevatorNetwork struct {
 
 	udpConn *net.UDPConn
 
-	receiveChannel chan AckPacket
-	initialised    bool
+	receiveChannel       chan AckPacket
+	inboundArrayChannel  chan<- elevconsts.RequestArrayMessage
+	outboundArrayChannel <-chan elevconsts.RequestArrayMessage
+	initialised          bool
 }
 
-func NewElevatorNetwork(metaData *elevmetadata.ElevMetaData, state *elevstate.ElevatorState) *ElevatorNetwork {
+func NewElevatorNetwork(metaData *elevmetadata.ElevMetaData, state *elevstate.ElevatorState, outboundArrayChannel <-chan elevconsts.RequestArrayMessage, inboundArrayChannel chan<- elevconsts.RequestArrayMessage) *ElevatorNetwork {
 	return &ElevatorNetwork{
-		metaData:       metaData,
-		nodes:          make(map[string]*Node, 10), //TODO: Remove magic Number
-		localState:     state,
-		receiveChannel: make(chan AckPacket, 10), //TODO: Remove magic Number
-		initialised:    true,
+		metaData:             metaData,
+		nodes:                make(map[string]*Node, 10), //TODO: Remove magic Number
+		localState:           state,
+		receiveChannel:       make(chan AckPacket, 10), //TODO: Remove magic Number
+		outboundArrayChannel: outboundArrayChannel,
+		inboundArrayChannel:  inboundArrayChannel,
+		initialised:          true,
 	}
 }
 
@@ -214,6 +223,9 @@ func (en *ElevatorNetwork) Start(ctx context.Context, wg *sync.WaitGroup) error 
 				en.checkNodes()
 			case <-tickerSendStates.C:
 				en.sendState()
+			case requestArray := <-en.outboundArrayChannel:
+				en.sendRequests(requestArray)
+
 			}
 		}
 	}()
@@ -295,6 +307,15 @@ func (en *ElevatorNetwork) handleDirectMessage(data []byte, address *net.UDPAddr
 		default:
 			Logger.Error().Msg("FIX THIS SHOULD NEVER HAPPEN")
 		}
+	case PACKET_TYPE_REQUEST_ARRAY:
+		var reqArrayPacket RequestArrayPacket
+		if err := json.Unmarshal(data, &reqArrayPacket); err != nil {
+			Logger.Error().Msgf("Failed to unmarshal request array packet: %v", err)
+			return
+		}
+		// Optionally, send an ACK here if required.
+		en.sendAcknowledgement(packetHash, packet.MetaData.Identifier, address)
+		en.handleRequestArrayPacket(reqArrayPacket)
 	default:
 		Logger.Warn().Msgf("Received unknown packet type: %v", packet.PacketType)
 	}
@@ -303,11 +324,11 @@ func (en *ElevatorNetwork) handleDirectMessage(data []byte, address *net.UDPAddr
 func (en *ElevatorNetwork) handleElevatorHeartbeat(heartbeat HeartBeatPacket) {
 	// Ignore our own heartbeats
 	if heartbeat.MetaData.Identifier == en.metaData.Identifier {
-		Logger.Debug().Msgf("Received own heartbeat")
+		//Logger.Debug().Msgf("Received own heartbeat")
 		return
 	}
 
-	Logger.Debug().Msgf("Received heartbeat from %s", heartbeat.MetaData.Identifier)
+	//Logger.Debug().Msgf("Received heartbeat from %s", heartbeat.MetaData.Identifier)
 
 	en.nodesMutex.Lock()
 	defer en.nodesMutex.Unlock()
@@ -451,12 +472,46 @@ func (en *ElevatorNetwork) sendState() {
 	}
 }
 
+func (en *ElevatorNetwork) sendRequests(requestArray elevconsts.RequestArrayMessage) {
+	//Send state to all alive nodes
+	en.nodesMutex.Lock()
+	nodes := make([]*Node, 0, len(en.nodes))
+	for _, node := range en.nodes {
+		node.Mutex.Lock()
+		if node.Alive {
+			nodes = append(nodes, node)
+		}
+		node.Mutex.Unlock()
+	}
+	en.nodesMutex.Unlock()
+
+	//Send To Each Node
+	for _, node := range nodes {
+		stateUpdateMsg := RequestArrayPacket{
+			NetworkPacket: NetworkPacket{
+				PacketType: PACKET_TYPE_REQUEST_ARRAY,
+				MetaData:   *en.metaData,
+				Time:       time.Now(),
+			},
+			Request: requestArray,
+		}
+
+		data, err := json.Marshal(stateUpdateMsg)
+		if err != nil {
+			Logger.Error().Msgf("Failed to serialise requests array: %v", err)
+			continue
+		}
+
+		go en.sendWithRetry(data, node)
+	}
+}
+
 func (en *ElevatorNetwork) handleButtonPacket(packet ButtonPacket) {
 	Logger.Error().Msgf("Un implemented TODO function")
 }
 
 func (en *ElevatorNetwork) handleStatePacket(packet StatePacket) {
-	Logger.Info().Msgf("Received state update from %s", packet.MetaData.Identifier)
+	//Logger.Info().Msgf("Received state update from %s", packet.MetaData.Identifier)
 
 	en.nodesMutex.Lock()
 	defer en.nodesMutex.Unlock()
@@ -468,7 +523,7 @@ func (en *ElevatorNetwork) handleStatePacket(packet StatePacket) {
 		node.LastStateUpdate = time.Now()
 		node.Mutex.Unlock()
 
-		Logger.Debug().Msgf("Updated state for elevator %s", packet.MetaData.Identifier)
+		//Logger.Debug().Msgf("Updated state for elevator %s", packet.MetaData.Identifier)
 		return
 	}
 	Logger.Error().Msgf("Received state from unknown node: %s", packet.MetaData.Identifier)
@@ -509,8 +564,29 @@ func (en *ElevatorNetwork) GetElevatorStateMap() map[string]elevstate.ElevatorSt
 	for id, node := range en.GetNodeMap() {
 		states[id] = node.State
 	}
+	en.statePointer.Lock()
+	defer en.statePointer.Unlock()
+	states[en.metaData.Identifier] = *en.localState
 
 	return states
+}
+
+func (en *ElevatorNetwork) GetAliveNodes() []string {
+	en.nodesMutex.Lock()
+	defer en.nodesMutex.Unlock()
+
+	aliveNodes := []string{en.metaData.Identifier}
+
+	for id, node := range en.nodes {
+		node.Mutex.Lock()
+		if node.Alive {
+			aliveNodes = append(aliveNodes, id)
+		}
+		node.Mutex.Unlock()
+	}
+	//aliveNodes = append(aliveNodes, en.metaData.Identifier)
+
+	return aliveNodes
 }
 
 // func (en *ElevatorNetwork) BroadcastStateMap() {
@@ -539,4 +615,9 @@ func (en *ElevatorNetwork) GetNodesConnected() int {
 	}
 
 	return counter
+}
+
+func (en *ElevatorNetwork) handleRequestArrayPacket(packet RequestArrayPacket) {
+	en.inboundArrayChannel <- packet.Request
+	//Logger.Info().Msgf("Received RequestArrayMessage from %s", packet.Request.Identifier)
 }

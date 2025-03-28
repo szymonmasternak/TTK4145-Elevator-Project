@@ -36,6 +36,10 @@ type RequestFloorEvent struct {
 	Floor int
 }
 
+type UpdateHallRequestsEvent struct {
+	Requests [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int
+}
+
 func (e *ElevatorEvent) EventType() string {
 	switch e.Value.(type) {
 	case ButtonPressEvent:
@@ -48,6 +52,8 @@ func (e *ElevatorEvent) EventType() string {
 		return "ObstructionEvent"
 	case RequestFloorEvent:
 		return "RequestFloorEvent"
+	case UpdateHallRequestsEvent:
+		return "UpdateHallRequestsEvent"
 	default:
 		return "UnknownEvent"
 	}

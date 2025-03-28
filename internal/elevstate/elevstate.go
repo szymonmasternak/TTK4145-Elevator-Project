@@ -9,6 +9,8 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 
+	//"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/requesthandler"
+
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevevent"
 )
@@ -16,24 +18,25 @@ import (
 var Log = logger.GetLogger()
 
 type ElevatorState struct {
-	Floor     int
-	Dirn      elevconsts.Dirn
-	Requests  [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int
-	Behaviour elevconsts.ElevatorBehaviour
+	Floor             int
+	Dirn              elevconsts.Dirn
+	ConfirmedRequests [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int
+	Behaviour         elevconsts.ElevatorBehaviour
 
 	//Internal Variables
-	clearRequestVariant elevconsts.ClearRequestVariant
-	obstructionSensor   bool
-	stopButton          bool
-	doorOpenDuration    time.Duration
-	doorOpenTime        time.Time
-	eventChannel        <-chan elevevent.ElevatorEvent
-	commandChannel      chan<- elevcmd.ElevatorCommand
+	clearRequestVariant  elevconsts.ClearRequestVariant
+	obstructionSensor    bool
+	stopButton           bool
+	doorOpenDuration     time.Duration
+	doorOpenTime         time.Time
+	eventChannel         <-chan elevevent.ElevatorEvent
+	commandChannel       chan<- elevcmd.ElevatorCommand
+	updateRequestChannel chan<- elevconsts.RequestMessage
 	// networkMsgChannel   chan<- elevnet.NetworkMsg
 }
 
 // func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, networkMsgChannel <-chan elevnet.NetworkMsg, clearUpDownOnArrival bool) *ElevatorState {
-func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool) *ElevatorState {
+func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChannel chan<- elevcmd.ElevatorCommand, clearUpDownOnArrival bool, updateReqCh chan<- elevconsts.RequestMessage) *ElevatorState {
 
 	clearRequestVariant := elevconsts.InDirn
 	if clearUpDownOnArrival {
@@ -41,16 +44,17 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 	}
 
 	elevatorState := &ElevatorState{
-		Floor:               -1,
-		Dirn:                elevconsts.Stop,
-		Behaviour:           elevconsts.Idle,
-		clearRequestVariant: clearRequestVariant,
-		doorOpenDuration:    time.Second * 3,
-		eventChannel:        eventChannel,
-		commandChannel:      commandChannel,
-		stopButton:          false,
-		obstructionSensor:   false,
-		doorOpenTime:        time.Time{}, //Returns zero value, since we dont know when it was last open
+		Floor:                -1,
+		Dirn:                 elevconsts.Stop,
+		Behaviour:            elevconsts.Idle,
+		clearRequestVariant:  clearRequestVariant,
+		doorOpenDuration:     time.Second * 3,
+		eventChannel:         eventChannel,
+		commandChannel:       commandChannel,
+		updateRequestChannel: updateReqCh,
+		stopButton:           false,
+		obstructionSensor:    false,
+		doorOpenTime:         time.Time{}, //Returns zero value, since we dont know when it was last open
 		// networkMsgChannel:   networkMsgChannel,
 	}
 	return elevatorState
@@ -80,6 +84,7 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 		es.Dirn = elevconsts.Down
 		es.Behaviour = elevconsts.Moving
 	}
+	doorTimeoutTicker := time.NewTicker(100 * time.Millisecond)
 
 	waitGroup.Add(1)
 	go func() {
@@ -106,10 +111,14 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 				case elevevent.ObstructionEvent:
 					Log.Info().Msgf("Obstruction Button is %v", evnt.Value)
 					es.handleObstruction(evnt.Value)
+				case elevevent.UpdateHallRequestsEvent:
+					//Log.Info().Msgf("Requests Updated to %v", evnt.Requests)
+					es.handleUpdateHallRequests(evnt.Requests)
 				case elevevent.RequestFloorEvent:
 					Log.Error().Msgf("RequestFloorEvent should not occur")
 				}
-			default:
+				//es.BroadcastState()
+			case <-doorTimeoutTicker.C:
 				if time.Now().After(es.doorOpenTime.Add(es.doorOpenDuration)) {
 					if es.Behaviour == elevconsts.DoorOpen {
 						if !es.stopButton {
@@ -142,7 +151,7 @@ func (es *ElevatorState) Print() {
 			if (f == elevconsts.N_FLOORS-1 && btn == int(elevconsts.HallUp)) || (f == 0 && btn == int(elevconsts.HallDown)) {
 				Log.Info().Msgf("|     ")
 			} else {
-				if es.Requests[f][btn] != 0 {
+				if es.ConfirmedRequests[f][btn] != 0 {
 					Log.Info().Msgf("|  #  ")
 				} else {
 					Log.Info().Msgf("|  -  ")
@@ -163,14 +172,13 @@ func (es *ElevatorState) setAllLightsSequence() {
 			buttonArray[i] = elevcmd.ButtonLightCommand{
 				Floor:  floor,
 				Button: elevconsts.Button(btn),
-				Value:  es.Requests[floor][btn] != 0,
+				Value:  es.ConfirmedRequests[floor][btn] != 0,
 			}
 		}
 	}
 
 	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.ButtonLightArrayCommand{Array: buttonArray}}
 }
-
 func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Button) {
 	if es.stopButton {
 		Log.Warn().Msgf("Stop Button Pressed, not responding to button presses")
@@ -181,29 +189,45 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 	case elevconsts.DoorOpen:
 		if es.RequestsShouldClearImmediately(btnFloor, btnType) {
 			es.doorOpenTime = time.Now().Add(es.doorOpenDuration)
+			Log.Debug().Msgf("Clearing Request at current floor and adding 3 seconds to door open time")
 		} else {
-			es.Requests[btnFloor][btnType] = 1
+			Log.Debug().Msgf("Adding Request to queue")
+			es.updateRequestChannel <- elevconsts.RequestMessage{
+				Floor:  btnFloor,
+				Button: btnType,
+				State:  elevconsts.REQ_Unconfirmed,
+			}
 		}
 
 	case elevconsts.Moving:
-		es.Requests[btnFloor][btnType] = 1
+		Log.Debug().Msgf("Adding Request to queue")
+		es.updateRequestChannel <- elevconsts.RequestMessage{
+			Floor:  btnFloor,
+			Button: btnType,
+			State:  elevconsts.REQ_Unconfirmed,
+		}
 
 	case elevconsts.Idle:
-		es.Requests[btnFloor][btnType] = 1
-		es.Dirn, es.Behaviour = es.RequestsChooseDirection()
-
-		switch es.Behaviour {
-		case elevconsts.DoorOpen:
-			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
-			es.doorOpenTime = time.Now()
-			es.RequestsClearAtCurrentFloor()
-
-		case elevconsts.Moving:
-			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: es.Dirn}}
+		Log.Debug().Msgf("Adding Request to queue")
+		es.updateRequestChannel <- elevconsts.RequestMessage{
+			Floor:  btnFloor,
+			Button: btnType,
+			State:  elevconsts.REQ_Unconfirmed,
 		}
+		// es.Dirn, es.Behaviour = es.RequestsChooseDirection()
+
+		// switch es.Behaviour {
+		// case elevconsts.DoorOpen:
+		// 	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
+		// 	es.doorOpenTime = time.Now()
+		// 	es.RequestsClearAtCurrentFloor()
+
+		// case elevconsts.Moving:
+		// 	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: es.Dirn}}
+		// }
 	}
 
-	es.setAllLightsSequence()
+	//es.setAllLightsSequence()
 }
 
 // Handles elevator arrival at a new floor
@@ -216,6 +240,7 @@ func (es *ElevatorState) handleFloorArrival(newFloor int) {
 		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
 
 		es.doorOpenTime = time.Now()
+		Log.Debug().Msgf("Adding time to door open time")
 		es.RequestsClearAtCurrentFloor()
 		es.setAllLightsSequence()
 		es.Behaviour = elevconsts.DoorOpen
@@ -231,15 +256,18 @@ func (es *ElevatorState) handleDoorTimeout() {
 	}
 
 	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorCloseCommand{}}
+	time.Sleep(100 * time.Millisecond)
 	es.Dirn, es.Behaviour = es.RequestsChooseDirection()
 
 	switch es.Behaviour {
 	case elevconsts.DoorOpen:
 		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
 		es.doorOpenTime = time.Now()
+		Log.Debug().Msgf("Door timeout, but door should stay open 3 more seconds")
 		es.RequestsClearAtCurrentFloor()
 		es.setAllLightsSequence()
 	case elevconsts.Moving:
+		Log.Debug().Msgf("Door timeout, but door should close and elevator should move")
 		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: es.Dirn}}
 	}
 }
@@ -257,4 +285,51 @@ func (es *ElevatorState) handleStopButton(stopButtonState bool) {
 
 func (es *ElevatorState) handleObstruction(obstructionState bool) {
 	es.obstructionSensor = obstructionState
+}
+
+func (es *ElevatorState) handleUpdateHallRequests(requests [elevconsts.N_FLOORS][elevconsts.N_BUTTONS]int) {
+
+	if es.ConfirmedRequests != requests {
+		es.ConfirmedRequests = requests
+		//if es.Behaviour == elevconsts.Idle || es.Behaviour == elevconsts.Moving {
+		es.Dirn, es.Behaviour = es.RequestsChooseDirection()
+
+		switch es.Behaviour {
+		case elevconsts.DoorOpen:
+			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
+			es.doorOpenTime = time.Now()
+			Log.Debug().Msgf("Adding time to door open time")
+			es.RequestsClearAtCurrentFloor()
+
+		case elevconsts.Moving:
+			Log.Debug().Msgf("Requests updated, moving elevator")
+			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: es.Dirn}}
+		}
+		// 	} else if es.Behaviour == elevconsts.DoorOpen {
+		// 		if es.RequestsShouldClearImmediately(btnFloor, btnType) {
+		// 		es.doorOpenTime = time.Now().Add(es.doorOpenDuration)
+		// 	}
+		// }
+		es.setAllLightsSequence()
+
+	}
+}
+
+// func (es *ElevatorState) BroadcastState() {
+// 	es.stateOutChannel <- *es
+// 	//Log.Debug().Msgf("Broadcasted State")
+// }
+
+func (es *ElevatorState) UpdateState(newState ElevatorState) {
+	// If concurrency is a concern, consider adding a mutex lock/unlock here.
+	es.Floor = newState.Floor
+	es.Dirn = newState.Dirn
+	es.ConfirmedRequests = newState.ConfirmedRequests
+	es.Behaviour = newState.Behaviour
+
+	// If you need to update other internal fields, do so here.
+	// For example, you might want to update doorOpenTime, or sensor flags if applicable.
+
+	// Optionally, update the button lights to reflect the new state.
+	es.setAllLightsSequence()
 }
