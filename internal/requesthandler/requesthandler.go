@@ -123,7 +123,7 @@ func (handler *RequestHandler) Start(ctx context.Context, wg *sync.WaitGroup) {
 
 			// Process inbound RequestArrayMessages.
 			case incomingMsg := <-handler.inboundArrayChannel:
-				//Log.Debug().Msgf("Merged RequestHandler: received RequestArrayMessage from %s: %v", incomingMsg.Identifier, incomingMsg.RequestArray)
+				Log.Debug().Msgf("Merged RequestHandler: received RequestArrayMessage from %s: %v", incomingMsg.Identifier, incomingMsg.RequestArray)
 				// Update alive peers under lock.
 				handler.mu.Lock()
 				handler.alivePeers = handler.localNetwork.GetAliveNodes()
@@ -135,13 +135,14 @@ func (handler *RequestHandler) Start(ctx context.Context, wg *sync.WaitGroup) {
 					continue
 				}
 				handler.updateLocalRequestMap(incomingMsg.Identifier, incomingMsg.RequestArray)
+				Log.Debug().Msgf("Merged RequestHandler: updated local RequestArray for %s: %v", incomingMsg.Identifier, handler.requestMap[incomingMsg.Identifier])
 				handler.broadcastIfUpdated(incomingMsg.Identifier)
 
 			// Process local RequestMessages.
 			case reqMsg := <-handler.requestUpdateChannel:
 				handler.mu.Lock()
 				handler.alivePeers = handler.localNetwork.GetAliveNodes()
-				//Log.Debug().Msgf("RequestHandler: received local RequestMessage: %v", reqMsg)
+				Log.Debug().Msgf("RequestHandler: received local RequestMessage: %v", reqMsg)
 				tempArr := handler.requestMap[handler.localID]
 				// Update the local RequestArray based on the incoming RequestMessage.
 				if tempArr[reqMsg.Floor][reqMsg.Button].State <= elevconsts.REQ_None && reqMsg.State == elevconsts.REQ_Unconfirmed {
@@ -152,7 +153,6 @@ func (handler *RequestHandler) Start(ctx context.Context, wg *sync.WaitGroup) {
 					tempArr[reqMsg.Floor][reqMsg.Button].ConsensusPeers = []string{handler.localID}
 				}
 				handler.requestMap[handler.localID] = tempArr
-				//Log.Debug().Msgf("RequestHandler: updated local RequestArray: %v", handler.requestMap[handler.localID])
 
 				// If we are alone, update our own map.
 				if len(handler.alivePeers) == 1 {
@@ -201,7 +201,7 @@ func (handler *RequestHandler) Start(ctx context.Context, wg *sync.WaitGroup) {
 				handler.mu.Lock()
 				latestRequestMap := handler.requestMap
 				handler.mu.Unlock()
-				//Log.Debug().Msgf("RequestHandler: latest request map: %v", latestRequestMap)
+				Log.Debug().Msgf("RequestHandler: latest request map: %v", latestRequestMap)
 
 				// Gather the network-wide elevator states.
 				stateMap := handler.localNetwork.GetElevatorStateMap()
@@ -398,6 +398,7 @@ func confirmRequest(req elevconsts.Request, localID string, allNodes []string) e
 	switch req.State {
 	case elevconsts.REQ_Completed:
 		req.State = elevconsts.REQ_None
+		Log.Debug().Msgf("Merged RequestHandler: confirmed request %v", req)
 	case elevconsts.REQ_Unconfirmed:
 		req.State = elevconsts.REQ_Confirmed
 	}

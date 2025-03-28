@@ -61,6 +61,7 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 }
 
 func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) error {
+	es.setAllLightsSequence()
 	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.RequestFloorCommand{}}
 
 	timeout := time.After(500 * time.Millisecond)
@@ -84,7 +85,7 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 		es.Dirn = elevconsts.Down
 		es.Behaviour = elevconsts.Moving
 	}
-	doorTimeoutTicker := time.NewTicker(100 * time.Millisecond)
+	doorTimeoutTicker := time.NewTicker(500 * time.Millisecond)
 
 	waitGroup.Add(1)
 	go func() {
@@ -118,8 +119,11 @@ func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) e
 					Log.Error().Msgf("RequestFloorEvent should not occur")
 				}
 				//es.BroadcastState()
+
 			case <-doorTimeoutTicker.C:
 				if time.Now().After(es.doorOpenTime.Add(es.doorOpenDuration)) {
+					//Log.Debug().Msgf("DoorTimeoutTicker, Door Open Time is %v", es.doorOpenTime.String())
+					//Log.Debug().Msgf("DoorTimeoutTicker, Current behaviour is %s", es.Behaviour.String())
 					if es.Behaviour == elevconsts.DoorOpen {
 						if !es.stopButton {
 							Log.Warn().Msgf("Door timeout Event")
@@ -240,7 +244,7 @@ func (es *ElevatorState) handleFloorArrival(newFloor int) {
 		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
 
 		es.doorOpenTime = time.Now()
-		Log.Debug().Msgf("Adding time to door open time")
+		Log.Debug().Msgf("Floorarrival, Adding time to door open time, new time is %v", es.doorOpenTime.String())
 		es.RequestsClearAtCurrentFloor()
 		es.setAllLightsSequence()
 		es.Behaviour = elevconsts.DoorOpen
@@ -263,7 +267,8 @@ func (es *ElevatorState) handleDoorTimeout() {
 	case elevconsts.DoorOpen:
 		es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
 		es.doorOpenTime = time.Now()
-		Log.Debug().Msgf("Door timeout, but door should stay open 3 more seconds")
+		Log.Warn().Msgf("Door timeout, but door should stay open 3 more seconds")
+		Log.Debug().Msgf("Confirmed Requests: %v", es.ConfirmedRequests)
 		es.RequestsClearAtCurrentFloor()
 		es.setAllLightsSequence()
 	case elevconsts.Moving:
@@ -292,19 +297,22 @@ func (es *ElevatorState) handleUpdateHallRequests(requests [elevconsts.N_FLOORS]
 	if es.ConfirmedRequests != requests {
 		es.ConfirmedRequests = requests
 		//if es.Behaviour == elevconsts.Idle || es.Behaviour == elevconsts.Moving {
-		es.Dirn, es.Behaviour = es.RequestsChooseDirection()
+		if es.Behaviour != elevconsts.DoorOpen {
+			es.Dirn, es.Behaviour = es.RequestsChooseDirection()
 
-		switch es.Behaviour {
-		case elevconsts.DoorOpen:
-			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
-			es.doorOpenTime = time.Now()
-			Log.Debug().Msgf("Adding time to door open time")
-			es.RequestsClearAtCurrentFloor()
+			switch es.Behaviour {
+			case elevconsts.DoorOpen:
+				es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.DoorOpenCommand{}}
+				es.doorOpenTime = time.Now()
+				Log.Debug().Msgf("RequestsUpdated, Adding time to door open time, new time is %v", es.doorOpenTime.String())
+				es.RequestsClearAtCurrentFloor()
 
-		case elevconsts.Moving:
-			Log.Debug().Msgf("Requests updated, moving elevator")
-			es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: es.Dirn}}
+			case elevconsts.Moving:
+				Log.Debug().Msgf("Requests updated to %v, moving elevator", requests)
+				es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.MotorDirCommand{Dir: es.Dirn}}
+			}
 		}
+
 		// 	} else if es.Behaviour == elevconsts.DoorOpen {
 		// 		if es.RequestsShouldClearImmediately(btnFloor, btnType) {
 		// 		es.doorOpenTime = time.Now().Add(es.doorOpenDuration)
