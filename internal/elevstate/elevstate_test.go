@@ -11,6 +11,7 @@ import (
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevcmd"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevconsts"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevevent"
+	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/elevstatenetmsg"
 	"github.com/szymonmasternak/TTK4145-Elevator-Project/internal/logger"
 )
 
@@ -68,13 +69,14 @@ func TestElevatorStateInitialisation(t *testing.T) {
 	eventChannel := make(chan elevevent.ElevatorEvent, 10)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 1)
 	clearUpDownOnArrival := false
+	stateNetChannel := make(chan elevstatenetmsg.ElevatorStateNetMsg, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
 
 	floorStart := 3
 	go func() {
@@ -103,13 +105,14 @@ func TestNewElevatorStateCommands(t *testing.T) {
 	eventChannel := make(chan elevevent.ElevatorEvent, 10)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 1)
 	clearUpDownOnArrival := false
+	stateNetChannel := make(chan elevstatenetmsg.ElevatorStateNetMsg, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
 
 	floorStart := 3
 	go func() {
@@ -174,13 +177,14 @@ func TestElevatorStateStartTimeout(t *testing.T) {
 	eventChannel := make(chan elevevent.ElevatorEvent, 10)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 1)
 	clearUpDownOnArrival := false
+	stateNetChannel := make(chan elevstatenetmsg.ElevatorStateNetMsg, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
 
 	err := elevState.Start(ctx, wg)
 	if err == nil {
@@ -194,13 +198,14 @@ func TestDoorOpenDuration(t *testing.T) {
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
 	clearUpDownOnArrival := false
+	stateNetChannel := make(chan elevstatenetmsg.ElevatorStateNetMsg, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
 
 	floorStart := 1
 	go func() {
@@ -256,13 +261,14 @@ func TestObstruction(t *testing.T) {
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
 	clearUpDownOnArrival := false
+	stateNetChannel := make(chan elevstatenetmsg.ElevatorStateNetMsg, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
 
 	floorStart := 1
 	go func() {
@@ -333,13 +339,14 @@ func TestStopButton(t *testing.T) {
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
 	clearUpDownOnArrival := false
+	stateNetChannel := make(chan elevstatenetmsg.ElevatorStateNetMsg, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
 
 	floorStart := 0
 	floorButtonRequest := 3
@@ -394,13 +401,14 @@ func TestCabCall(t *testing.T) {
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
 	clearUpDownOnArrival := false
+	stateNetChannel := make(chan elevstatenetmsg.ElevatorStateNetMsg, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
 
 	floorStart := 0
 	floorButtonRequest := 3
@@ -461,13 +469,14 @@ func TestHallCall(t *testing.T) {
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
 	clearUpDownOnArrival := false
+	stateNetChannel := make(chan elevstatenetmsg.ElevatorStateNetMsg, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
 
 	floorStart := 1
 	floorButtonRequest := 2
@@ -523,13 +532,14 @@ func TestFullJourney(t *testing.T) {
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
 	clearUpDownOnArrival := false
+	stateNetChannel := make(chan elevstatenetmsg.ElevatorStateNetMsg, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
 
 	floorStart := 0
 	floorButtonRequest := 2
@@ -615,13 +625,14 @@ func TestInitialisationBetweenFloors(t *testing.T) {
 	eventChannel := make(chan elevevent.ElevatorEvent, 100)
 	commandChannel := make(chan elevcmd.ElevatorCommand, 100)
 	clearUpDownOnArrival := false
+	stateNetChannel := make(chan elevstatenetmsg.ElevatorStateNetMsg, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
 	defer wg.Wait()
 	defer cancel()
 
-	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival)
+	elevState := NewElevatorState(eventChannel, commandChannel, clearUpDownOnArrival, stateNetChannel)
 
 	floorStart := -1
 	go func() {
