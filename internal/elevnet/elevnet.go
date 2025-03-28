@@ -23,14 +23,18 @@ var Logger = logger.GetLogger()
 
 // From here is all the network stuff
 const (
-	HEARTBEAT_INTERVAL      = 500 * time.Millisecond
-	SEND_STATE_INTERVAL     = 1 * time.Second
-	CHECK_NODES_INTERVAL    = 1 * time.Second
-	NODE_TIMEOUT            = 3 * time.Second
-	ACKNOWLEDGEMENT_TIMEOUT = 200 * time.Millisecond
-	MAX_RETRIES             = 3
-	BROADCAST_RX_ADDRESS    = "224.0.0.1" //https://gist.github.com/fiorix/9664255
-	BROADCAST_TX_ADDRESS    = "255.255.255.255"
+	HEARTBEAT_INTERVAL              = 500 * time.Millisecond
+	SEND_STATE_INTERVAL             = 1 * time.Second
+	CHECK_NODES_INTERVAL            = 1 * time.Second
+	NODE_TIMEOUT                    = 3 * time.Second
+	ACKNOWLEDGEMENT_TIMEOUT         = 200 * time.Millisecond
+	MAX_RETRIES                     = 3
+	BROADCAST_RX_ADDRESS            = "224.0.0.1" //https://gist.github.com/fiorix/9664255
+	BROADCAST_TX_ADDRESS            = "255.255.255.255"
+	ELEVNET_NODES_LENGTH            = 10
+	ELEVNET_RX_ACK_LENGTH           = 10
+	UDP_BUFFER_SIZE                 = 2024
+	PRINT_NODES_CONNECTED_INTERNVAL = 1 * time.Second
 )
 
 type Node struct {
@@ -66,9 +70,9 @@ type ElevatorNetwork struct {
 func NewElevatorNetwork(metaData *elevmetadata.ElevMetaData, state *elevstate.ElevatorState, stateNetChannel chan elevstatenetmsg.ElevatorStateNetMsg, eventChannel chan elevevent.ElevatorEvent) *ElevatorNetwork {
 	return &ElevatorNetwork{
 		metaData:        metaData,
-		nodes:           make(map[string]*Node, 10), //TODO: Remove magic Number
+		nodes:           make(map[string]*Node, ELEVNET_NODES_LENGTH),
 		localState:      state,
-		receiveChannel:  make(chan AckPacket, 10), //TODO: Remove magic Number
+		receiveChannel:  make(chan AckPacket, ELEVNET_RX_ACK_LENGTH),
 		initialised:     true,
 		stateNetChannel: stateNetChannel,
 		eventChannel:    eventChannel,
@@ -124,7 +128,7 @@ func (en *ElevatorNetwork) Start(ctx context.Context, wg *sync.WaitGroup) error 
 	//Heartbeat Receive Thread
 	go func() {
 		defer wg.Done()
-		buffer := make([]byte, 1024)
+		buffer := make([]byte, UDP_BUFFER_SIZE)
 		for {
 			select {
 			case <-ctx.Done():
@@ -151,7 +155,7 @@ func (en *ElevatorNetwork) Start(ctx context.Context, wg *sync.WaitGroup) error 
 	//Receive Direct Messages Thread
 	go func() {
 		defer wg.Done()
-		buffer := make([]byte, 2048)
+		buffer := make([]byte, UDP_BUFFER_SIZE)
 		for {
 			select {
 			case <-ctx.Done():
@@ -217,7 +221,7 @@ func (en *ElevatorNetwork) Start(ctx context.Context, wg *sync.WaitGroup) error 
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(1 * time.Second):
+			case <-time.After(PRINT_NODES_CONNECTED_INTERNVAL):
 				num := en.GetNodesConnected()
 				Logger.Info().Msgf("Elevators Connected: %d", num)
 			}
@@ -489,6 +493,7 @@ func (en *ElevatorNetwork) sendWithRetry(data []byte, node *Node) bool {
 
 	if wasNodeAlive && aliveNodes[0] == en.metaData.Identifier {
 		go func() {
+			//stealhallRequests accepts only array of Node object
 			nodeList := make([]*Node, 0, 1)
 			nodeList = append(nodeList, node)
 			en.stealHallRequestsFromNodes(nodeList)

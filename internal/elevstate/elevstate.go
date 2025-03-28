@@ -59,7 +59,7 @@ func NewElevatorState(eventChannel <-chan elevevent.ElevatorEvent, commandChanne
 func (es *ElevatorState) Start(ctx context.Context, waitGroup *sync.WaitGroup) error {
 	es.commandChannel <- elevcmd.ElevatorCommand{Value: elevcmd.RequestFloorCommand{}}
 
-	timeout := time.After(500 * time.Millisecond)
+	timeout := time.After(500 * time.Millisecond) //This number looks nice
 	select {
 	case <-ctx.Done():
 		Log.Warn().Msgf("ElevatorState Start has been signaled to stop")
@@ -306,7 +306,7 @@ func (es ElevatorState) CalculateTimeToServeReq(Floor int, Button elevconsts.But
 		duration += time.Hour //Penalty to not assign orders to open doors :-)
 	}
 	if es.stopButton {
-		duration += time.Hour * 100
+		duration += time.Hour * 100 //Big penalty never assign requests to stopped elevators
 	}
 
 	switch esCopy.Behaviour {
