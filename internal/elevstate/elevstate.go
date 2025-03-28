@@ -188,7 +188,7 @@ func (es *ElevatorState) handleButtonPress(btnFloor int, btnType elevconsts.Butt
 			select {
 			case msg := <-es.stateNetChannel:
 				if !msg.ShouldDoRequest {
-					Log.Warn().Msgf("Network Module decided that the button should be sent to the network")
+					Log.Warn().Msgf("Network Module decided that the button should be served by another node")
 					return
 				} else {
 					Log.Warn().Msgf("Network Module decided that the button should be served locally")
@@ -290,5 +290,53 @@ func AbsUint(n int) uint {
 }
 
 func (es ElevatorState) CalculateTimeToServeReq(Floor int, Button elevconsts.Button) time.Duration {
-	return time.Millisecond * time.Duration(AbsUint(Floor-es.Floor))
+	if Floor < 0 || Button > elevconsts.N_BUTTONS {
+		Log.Error().Msgf("Floor or Button out of range")
+		return time.Hour * 5
+	}
+	if es.Floor < 0 {
+		Log.Error().Msgf("es.Floor out of range")
+		return time.Hour * 5
+	}
+
+	esCopy := es
+	esCopy.Requests[Floor][Button] = 1
+
+	arrivedAtRequest := false
+	checkTargetRequest := func(clearedFloor int, clearedBtn elevconsts.Button) {
+		if clearedFloor == Floor && clearedBtn == Button {
+			arrivedAtRequest = true
+		}
+	}
+	var duration time.Duration
+
+	switch esCopy.Behaviour {
+	case elevconsts.Idle:
+		esCopy.Dirn, _ = esCopy.RequestsChooseDirection()
+		if esCopy.Dirn == elevconsts.Stop {
+			return duration
+		}
+	case elevconsts.Moving:
+		duration += elevconsts.ELEVATOR_TRAVEL_DURATION
+		esCopy.Floor += int(esCopy.Dirn)
+	case elevconsts.DoorOpen:
+		duration -= es.doorOpenDuration / 2
+	}
+
+	for {
+		if esCopy.RequestsShouldStop() {
+			esCopy.RequestsClearAtCurrentFloorErrorCheck(checkTargetRequest)
+
+			if arrivedAtRequest {
+				Log.Debug().Msgf("Elevator at floor %d Duration calculated: %s", es.Floor, duration)
+				return duration
+			}
+			duration += es.doorOpenDuration
+			esCopy.Dirn, _ = esCopy.RequestsChooseDirection()
+		}
+		esCopy.Floor += int(esCopy.Dirn)
+		duration += elevconsts.ELEVATOR_TRAVEL_DURATION
+	}
+	return duration
+
 }
